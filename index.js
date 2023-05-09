@@ -1,9 +1,21 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 
-const client = new DeliverooApi ("http://localhost:8080", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2ZTg4OTIwMDE0IiwibmFtZSI6ImQiLCJpYXQiOjE2ODA3MjM1ODJ9.uarl_g1B9pplSfkHgtaGGW-Kf791vJd1LtdB7E3JrW0")
+const client = new DeliverooApi(
+    'http://localhost:8080',
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2ZTg4OTIwMDE0IiwibmFtZSI6ImQiLCJpYXQiOjE2ODA3MjM1ODJ9.uarl_g1B9pplSfkHgtaGGW-Kf791vJd1LtdB7E3JrW0"
+)
 
-const start = Date.now();
+function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
+    const dx = Math.abs( Math.round(x1) - Math.round(x2) )
+    const dy = Math.abs( Math.round(y1) - Math.round(y2) )
+    return dx + dy;
+}
 
+
+
+/**
+ * Beliefset revision function
+ */
 const me = {};
 
 client.onYou( ( {id, name, x, y, score} ) => {
@@ -14,11 +26,9 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.score = score
 } )
 
-function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
-    const dx = Math.abs( Math.round(x1) - Math.round(x2) )
-    const dy = Math.abs( Math.round(y1) - Math.round(y2) )
-    return dx + dy;
-}
+client.onConfig( (param) => {
+     //console.log(param);
+} )
 
 /**
  * @type {Map<string,[{id,name,x,y,score}]}
@@ -30,89 +40,85 @@ const agent_db = new Map()
  */
 const parcel_db = new Map()
 
-var first = true;
-var second = false;
-var par;
-var par_starting_time;
-var par_ending_time;
-var time_dif;
-var time_dif_round;
-
-client.onParcelsSensing( (parcels) => {
+client.onTile( (x, y, delivery) => {
+    console.log(x, y, delivery)
+})
 
 
-    // Idea: If you can calculate the time it takes for decreasing its reward, you can simulate the reward of parcels out of the sensing area of the agent
-    // Problem: Not exactly the 0.4, 0.6, 1.0 second steps are used for detecting parcels -> rounding errors
 
+client.onParcelsSensing( ( parcels ) => {   //Parcel Sensing and Option generation
 
-/*     if (second == true && (par.reward != parcels[0].reward)) {   //Second Round - Save the current time of the parcel, compare it to the starting time -> Measuring the time for reward decrease
-        par_ending_time = Date.now()
-        time_dif =  par_ending_time - par_starting_time
-        time_dif_round = (time_dif / 100).toFixed(1)
-        console.log(time_dif_round)
-        time_dif = parseInt(time_dif / 1000)
-        if ((time_dif_round % 1) != 0) {
-            time_dif = time_dif + 1
-        }
-        console.log(time_dif)
-        second = false
-    }
-
-
-    if (first == true) {        //First Round - Save data of first parcel
-        par = parcels[0]
-        par_starting_time = Date.now()
-        first = false
-        second = true
-    } */
-
-    
-
-    for (const p of parcels) {
+   for (const p of parcels) {
       
    if (!parcel_db.has(p.id)) {  //not already in database
+
         if (p.carriedBy == null  ) {  // not already picked up by somebody else -> Saved in Database
 
-        parcel_db.set( p.id, [p])
+        parcel_db.set( p.id, [p])  
     }
+    
+    //Only Testrun with Criterium "Nearest Parcel", if it works - reasoning on desicion criteria (distance + reward)
+
+     /**
+     * Options generation
+     */
+     const options = []
+     for (const parcel of parcels.values())
+         if ( ! parcel.carriedBy ) {
+             options.push( [ 'go_pick_up', parcel.x, parcel.y, parcel.id ] );
+             }
+ 
+     /**
+      * Options filtering
+      */
+     let best_option;
+     let nearest = Number.MAX_VALUE;
+     for (const option of options) {
+         if ( option[0] == 'go_pick_up' ) {
+             let [go_pick_up,x,y,id] = option;
+             let current_d = distance( {x, y}, me )
+             if ( current_d < nearest ) {
+                 best_option = option
+                 nearest = current_d
+             }
+         } 
+     }
+ 
+     /**
+      * Best option is selected
+      */
+     if ( best_option )
+         myAgent.push( best_option )
+
       } else {
 
         if (p.carriedBy != null) {  //check if carried by somebody -> Delete out of Database
             parcel_db.delete(p.id)
+            continue
         }
 
-        var parcel_history = parcel_db.get( p.id )
-        var last = parcel_history[parcel_history.length-1]
+      var parcel_history = parcel_db.get( p.id )       
+    //  console.log(p.id, parcel_history)       //Only for Testing
+      
+        var last = parcel_history[parcel_history.length -1]
 
-        console.log(last)
-       
-
+        
         if (last.reward != p.reward) {  //update the value of the parcels
             parcel_db.set(p.id, [p])
             
         parcel_history = parcel_db.get( p.id )
-         last = parcel_history[parcel_history.length-1]
-        console.log(last) 
-        console.log()
+        last = parcel_history[parcel_history.length-1]
 
         continue        //Only 1 Update - Partial Steps are skipped
 
-        }
-       
-         
-
+        }    
       }
-
-
-    }
-       
-   
-   
+    }     
    } )
 
 
 
- client.onAgentsSensing( ( agents ) => {
+   client.onAgentsSensing( ( agents ) => {
 
     for (const a of agents) {
 
@@ -123,7 +129,6 @@ client.onParcelsSensing( (parcels) => {
         if ( ! agent_db.has( a.id) ) {
 
             agent_db.set( a.id, [a] )
-            console.log( 'First Meeting with', a.name )
 
         } else { // I remember him
 
@@ -139,11 +144,8 @@ client.onParcelsSensing( (parcels) => {
                 if ( last.x != a.x || last.y != a.y ) { // But he moved
                 
                     history.push( a )
-                    //console.log( 'I\'m seeing you moving', a.name )
                 
-                } else { // Still here but not moving
-
-                }                
+                }                 
 
             } else { // I see him again after some time
                 
@@ -200,21 +202,366 @@ client.onParcelsSensing( (parcels) => {
 
 
 
+/**
+ * Intention revision loop
+ */
+class IntentionRevision {
+
+    #intention_queue = new Array();
+    get intention_queue () {
+        return this.#intention_queue;
+    }
+
+    async loop ( ) {
+        while ( true ) {
+            // Consumes intention_queue if not empty
+            if ( this.intention_queue.length > 0 ) {
+                console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
+            
+                // Current intention
+                const intention = this.intention_queue[0];
+                
+                //console.log("Intention:", intention.predicate[3])  //only for testing
+
+                // Is queued intention still valid? Do I still want to achieve it?
+                // TODO this hard-coded implementation is an example    //Only implemented for parcels which are already picked up, maybe different criterias. We have to test if the code works!!!
+                let id = intention.predicate[3]
+                let p = parcel_db.get(id)
+
+                //console.log("Parcel:", p) //Only for testing
+
+                if (p.carriedBy == true) {
+                    console.log( 'Skipping intention because no more valid', intention.predicate )
+                    continue;
+                }
+
+                // Start achieving intention
+                await intention.achieve()
+                // Catch eventual error and continue
+                .catch( error => {
+                    // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
+                } );
+
+                // Remove from the queue
+                this.intention_queue.shift();
+            }
+            // Postpone next iteration at setImmediate
+            await new Promise( res => setImmediate( res ) );
+        }
+    }
+
+    // async push ( predicate ) { }
+
+    log ( ...args ) {
+        console.log( ...args )
+    }
+
+}
+
+class IntentionRevisionQueue extends IntentionRevision {
+
+    async push ( predicate ) {
+        
+        // Check if already queued
+        if ( this.intention_queue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
+            return; // intention is already queued
+
+        console.log( 'IntentionRevisionReplace.push', predicate );
+        const intention = new Intention( this, predicate );
+        this.intention_queue.push( intention );
+    }
+
+}
+
+class IntentionRevisionReplace extends IntentionRevision {
+
+    async push ( predicate ) {
+
+        // Check if already queued
+        const last = this.intention_queue.at( this.intention_queue.length - 1 );
+        if ( last && last.predicate.join(' ') == predicate.join(' ') ) {
+            return; // intention is already being achieved
+        }
+        
+        console.log( 'IntentionRevisionReplace.push', predicate );
+        const intention = new Intention( this, predicate );
+        this.intention_queue.push( intention );
+        
+        // Force current intention stop 
+        if ( last ) {
+            last.stop();
+        }
+    }
+
+}
+
+class IntentionRevisionRevise extends IntentionRevision {
+
+    async push ( predicate ) {
+        console.log( 'Revising intention queue. Received', ...predicate );
+        // TODO //Here put down function?
+        // - order intentions based on utility function (reward - cost) (for example, parcel score minus distance)
+        // - eventually stop current one
+        // - evaluate validity of intention
+    }
+
+}
+
+/**
+ * Start intention revision loop
+ */
+
+// const myAgent = new IntentionRevisionQueue();
+const myAgent = new IntentionRevisionReplace();
+// const myAgent = new IntentionRevisionRevise();
+myAgent.loop();
 
 
-// async function MyFn() {
 
-//     let up = client.move("up");
-//     up.then( (status) => console.log(status));
+/**
+ * Intention
+ */
+class Intention {
 
-//     await up;
+    // Plan currently used for achieving the intention 
+    #current_plan;
+    
+    // This is used to stop the intention
+    #stopped = false;
+    get stopped () {
+        return this.#stopped;
+    }
+    stop () {
+        // this.log( 'stop intention', ...this.#predicate );
+        this.#stopped = true;
+        if ( this.#current_plan)
+            this.#current_plan.stop();
+    }
 
-//     let right = client.move("right");
-//     right.then( (status) => console.log(status));
+    /**
+     * #parent refers to caller
+     */
+    #parent;
 
-// }
-// MyFn()
+    /**
+     * predicate is in the form ['go_to', x, y]
+     */
+    get predicate () {
+        return this.#predicate;
+    }
+    #predicate;
 
-// client.socket.on("you" , (me) => { 
-//     console.log(me) 
-// }    );
+    constructor ( parent, predicate ) {
+        this.#parent = parent;
+        this.#predicate = predicate;
+    }
+
+    log ( ...args ) {
+        if ( this.#parent && this.#parent.log )
+            this.#parent.log( '\t', ...args )
+        else
+            console.log( ...args )
+    }
+
+    #started = false;
+    /**
+     * Using the plan library to achieve an intention
+     */
+    async achieve () {
+        // Cannot start twice
+        if ( this.#started)
+            return this;
+        else
+            this.#started = true;
+
+        // Trying all plans in the library
+        for (const planClass of planLibrary) {
+
+            // if stopped then quit
+            if ( this.stopped ) throw [ 'stopped intention', ...this.predicate ];
+
+            // if plan is 'statically' applicable
+            if ( planClass.isApplicableTo( ...this.predicate ) ) {
+                // plan is instantiated
+                this.#current_plan = new planClass(this.parent);
+                this.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
+                // and plan is executed and result returned
+                try {
+                    const plan_res = await this.#current_plan.execute( ...this.predicate );
+                    this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
+                    return plan_res
+                // or errors are caught so to continue with next plan
+                } catch (error) {
+                    this.log( 'failed intention', ...this.predicate,'with plan', planClass.name, 'with error:', ...error );
+                }
+            }
+
+        }
+
+        // if stopped then quit
+        if ( this.stopped ) throw [ 'stopped intention', ...this.predicate ];
+
+        // no plans have been found to satisfy the intention
+        // this.log( 'no plan satisfied the intention ', ...this.predicate );
+        throw ['no plan satisfied the intention ', ...this.predicate ]
+    }
+
+}
+
+/**
+ * Plan library
+ */
+const planLibrary = [];
+
+class Plan {
+
+    // This is used to stop the plan
+    #stopped = false;
+    stop () {
+        // this.log( 'stop plan' );
+        this.#stopped = true;
+        for ( const i of this.#sub_intentions ) {
+            i.stop();
+        }
+    }
+    get stopped () {
+        return this.#stopped;
+    }
+
+    /**
+     * #parent refers to caller
+     */
+    #parent;
+
+    constructor ( parent ) {
+        this.#parent = parent;
+    }
+
+    log ( ...args ) {
+        if ( this.#parent && this.#parent.log )
+            this.#parent.log( '\t', ...args )
+        else
+            console.log( ...args )
+    }
+
+    // this is an array of sub intention. Multiple ones could eventually being achieved in parallel.
+    #sub_intentions = [];
+
+    async subIntention ( predicate ) {
+        const sub_intention = new Intention( this, predicate );
+        this.#sub_intentions.push( sub_intention );
+        return await sub_intention.achieve();
+    }
+
+}
+
+class GoPickUp extends Plan {
+
+    static isApplicableTo ( go_pick_up, x, y, id ) {
+        return go_pick_up == 'go_pick_up';
+    }
+
+    async execute ( go_pick_up, x, y ) {
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        await this.subIntention( ['go_to', x, y] );
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        await client.pickup()
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        return true;
+    }
+
+}
+
+
+class GoPutDown extends Plan {
+
+    static isApplicableTo ( go_put_down, x, y) {
+        return go_put_down == 'go_put_down';
+    }
+
+    async execute ( go_put_down, x, y ) {
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        await this.subIntention( ['go_to', x, y] );
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        await client.putdown()
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        return true;
+    }
+
+}
+
+
+class BlindMove extends Plan {
+
+    static isApplicableTo ( go_to, x, y ) {
+        return go_to == 'go_to';
+    }
+
+    async execute ( go_to, x, y ) {
+
+        while ( me.x != x || me.y != y ) {
+
+            if ( this.stopped ) throw ['stopped']; // if stopped then quit
+
+            let status_x = false;
+            let status_y = false;
+            
+            // this.log('me', me, 'xy', x, y);
+
+            if ( x > me.x )
+                status_x = await client.move('right')
+                // status_x = await this.subIntention( 'go_to', {x: me.x+1, y: me.y} );
+            else if ( x < me.x )
+                status_x = await client.move('left')
+                // status_x = await this.subIntention( 'go_to', {x: me.x-1, y: me.y} );
+
+            if (status_x) {
+                me.x = status_x.x;
+                me.y = status_x.y;
+            }
+
+            if ( this.stopped ) throw ['stopped']; // if stopped then quit
+
+            if ( y > me.y )
+                status_y = await client.move('up')
+                // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y+1} );
+            else if ( y < me.y )
+                status_y = await client.move('down')
+                // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y-1} );
+
+            if (status_y) {
+                me.x = status_y.x;
+                me.y = status_y.y;
+            }
+            
+            if ( ! status_x && ! status_y) {
+                this.log('stucked');
+                throw 'stucked';
+            } else if ( me.x == x && me.y == y ) {
+                // this.log('target reached');
+            }
+            
+        }
+
+        return true;
+
+    }
+}
+
+// plan classes are added to plan library 
+planLibrary.push( GoPickUp )
+planLibrary.push( BlindMove )
+planLibrary.push( GoPutDown)
+
+
+
+
+
+
+ 
+
+
+
+
+
+
