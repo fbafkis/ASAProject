@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 
 const client = new DeliverooApi(
     'http://localhost:8080',
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2ZTg4OTIwMDE0IiwibmFtZSI6ImQiLCJpYXQiOjE2ODA3MjM1ODJ9.uarl_g1B9pplSfkHgtaGGW-Kf791vJd1LtdB7E3JrW0"
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImVlMDkwM2E2MjQ3IiwibmFtZSI6ImRhbmllbCIsImlhdCI6MTY4MzgwNDczNH0.3bkMPWdv4mgdNfKXdXstPg-iSJACI2P1R9d_I-fpNp0"
 )
 
 function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
@@ -26,9 +26,16 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.score = score
 } )
 
-client.onConfig( (param) => {
-     //console.log(param);
-} )
+const game_map = {}
+
+
+// client.onConfig((param) => {console.log(param)})  //Needed when we take the sensing distance into calculation
+
+
+client.onMap((_width, _height, array) => {console.log(array)})
+
+//client.onTile((x, y, d) => console.log(x, y, d))
+
 
 /**
  * @type {Map<string,[{id,name,x,y,score}]}
@@ -40,14 +47,13 @@ const agent_db = new Map()
  */
 const parcel_db = new Map()
 
-client.onTile( (x, y, delivery) => {
-    console.log(x, y, delivery)
-})
+
 
 
 
 client.onParcelsSensing( ( parcels ) => {   //Parcel Sensing and Option generation
-
+    
+    
    for (const p of parcels) {
       
    if (!parcel_db.has(p.id)) {  //not already in database
