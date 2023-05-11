@@ -31,8 +31,13 @@ const game_map = {}
 
 // client.onConfig((param) => {console.log(param)})  //Needed when we take the sensing distance into calculation
 
-
-client.onMap((_width, _height, array) => {console.log(array)})
+client.onMap((_width, _height, array) => {
+        game_map._width = _width
+        game_map._height = _height
+        game_map.array = array
+    })
+    
+    console.log(game_map)
 
 //client.onTile((x, y, d) => console.log(x, y, d))
 
@@ -52,6 +57,7 @@ const parcel_db = new Map()
 
 
 client.onParcelsSensing( ( parcels ) => {   //Parcel Sensing and Option generation
+    
     
     
    for (const p of parcels) {
