@@ -29,6 +29,8 @@ client.onYou( ( {id, name, x, y, score, carrying} ) => {
 
 var parcel_decading_interval;
 
+var current_parcel;
+
 client.onConfig((config)=>{
     parcel_decading_interval = config.PARCEL_DECADING_INTERVAL;
 })
@@ -115,23 +117,40 @@ client.onParcelsSensing( parcels => {
         }
     }
 
-for (const option of options) {
+/* for (const option of options) { //Checking all available Options -> Later Version delete it
     console.log(option)
-}
+} */
 
     /**
      * Options filtering
      */
     let best_option;
-    let nearest = Number.MAX_VALUE;
+    
+    //distance Decision Function
+
+ let nearest = Number.MAX_VALUE; 
+ /*    
     for (const option of options) {
         if ( option[0] == 'go_pick_up' ) {
             let [go_pick_up,x,y,id] = option;
-            let current_d = distance( {x, y}, me )
+          
+            let current_d = distance( {x, y}, me )       
             if ( current_d < nearest ) {
                 best_option = option
                 nearest = current_d
             }
+ */
+            // Reward Decision Function
+            let highest_value = 0;
+            for (const option of options) {
+                if ( option[0] == 'go_pick_up' ) {
+                    let [go_pick_up,x,y,id] = option;
+                    let parcel = parcel_db.get(id)
+                    if (parcel.reward > highest_value)
+                    highest_value = parcel.reward;
+                    best_option = option;
+                 //   console.log(best_option);
+
         } else if (option[0] == 'go_put_down' ) {
             let [go_put_down,x,y,delivery] = option;
             let current_d = distance( {x, y}, me )
@@ -149,7 +168,9 @@ for (const option of options) {
      * Best option is selected
      */
     if ( best_option ) {
-        console.log(best_option)
+       // console.log(best_option)
+        if(best_option[0] == "go_pick_up") 
+        current_parcel = parcel_db.get(best_option.id)
         myAgent.push( best_option )
 }
 } )
@@ -440,7 +461,9 @@ class Plan {
 
 class GoPickUp extends Plan {
 
+    
     static isApplicableTo ( go_pick_up, x, y, id ) {
+
         return go_pick_up == 'go_pick_up';
     }
 
@@ -451,7 +474,11 @@ class GoPickUp extends Plan {
         await client.pickup()
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         me.carrying = true
-        //console.log(map.tiles)
+        console.log(parcel_db)
+        parcel_db.delete(current_parcel.id)
+        console.log("----")
+        console.log(parcel_db)
+        current_parcel = null
         return true;
     }
 
