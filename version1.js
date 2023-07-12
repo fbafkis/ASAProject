@@ -299,7 +299,7 @@ class IntentionRevision {
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
-                //console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
+                console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
                
                 // Current intention
                 const intention = this.intention_queue[0];
