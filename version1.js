@@ -11,7 +11,11 @@ function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
     return dx + dy;
 }
 
-
+function distance_center(target_x, target_y, tile_x, tile_y) {
+    const dx = Math.abs( Math.round(target_x) - Math.round(tile_x) )
+    const dy = Math.abs( Math.round(target_y) - Math.round(tile_y) )
+    return dx + dy;
+}
 
 /**
  * Beliefset revision function
@@ -59,6 +63,8 @@ client.onTile( (x, y, delivery) => {
     map.add( {x, y, delivery} );
 } )
 
+var first = true;
+
 
 
 /**
@@ -101,6 +107,38 @@ client.onParcelsSensing( async ( perceived_parcels ) => {
 client.onParcelsSensing( parcels => {
 
     // TODO revisit beliefset revision so to trigger option generation only in the case a new parcel is observed
+
+    if (first == true) {
+
+    var target_x;
+    var target_y;
+
+        if (map.height % 2 == 0) {
+            if (map.width % 2 == 0) {
+            target_y = map.height / 2;
+            target_x = map.width / 2; 
+            } else {
+            target_y = map.height / 2;
+            target_x = (map.width / 2) + 1;
+        }
+        } else {
+            target_y = (map.height / 2) + 1;
+            target_x = (map.width / 2);
+        }
+        
+
+        var closest = Number.MAX_VALUE;
+        var center_tile;
+
+        for(const tile of map.tiles.values()) {
+           let current_d = distance_center( target_x, target_y, tile.x, tile.y )  
+            if ( current_d < closest ) {
+                closest = current_d
+                center_tile = tile
+            } 
+        }
+        first = false;
+    }
 
     /**
      * Options generation
@@ -261,8 +299,8 @@ class IntentionRevision {
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
-                console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
-            
+                //console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
+               
                 // Current intention
                 const intention = this.intention_queue[0];
                 
@@ -283,13 +321,13 @@ class IntentionRevision {
                     // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
 
-                console.log(this.intention_queue.length)
+                //console.log(this.intention_queue.length)
 
                 // Remove from the queue
                 this.intention_queue.shift();
 
-                console.log("")
-                console.log(this.intention_queue.length)
+               /*  console.log("")
+                console.log(this.intention_queue.length) */
 
                 if (this.intention_queue.length == 0 && me.carrying == false) {
                     const predicate = ["patrolling"]
@@ -297,8 +335,8 @@ class IntentionRevision {
                     this.#intention_queue.push(intention );
                 }
 
-                console.log("")
-                console.log(this.intention_queue.length)
+                /* console.log("")
+                console.log(this.intention_queue.length) */
             }
             // Postpone next iteration at setImmediate
             await new Promise( res => setImmediate( res ) );
@@ -414,6 +452,7 @@ class Intention {
                 // and plan is executed and result returned
                 try {
                     const plan_res = await this.#current_plan.execute( ...this.predicate );
+                    console.log(plan_res)
                     this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
                     
                     return plan_res
@@ -497,10 +536,10 @@ class GoPickUp extends Plan {
         await client.pickup()
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         me.carrying = true
-        console.log(parcel_db)
+       /*  console.log(parcel_db)
         parcel_db.delete(current_parcel.id)
         console.log("----")
-        console.log(parcel_db)
+        console.log(parcel_db) */
         current_parcel = null
         return true;
     }
@@ -531,10 +570,12 @@ class Patrolling extends Plan {
         return patrolling == "patrolling";        
     }
 
-    
 
     async exexute (patrolling) {
-        return;
+        console.log("Test")
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        await this.subIntention( ['go_to', center_tile.x, center_tile.y] );
+        return true;
     }
 }
 
