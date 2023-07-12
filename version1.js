@@ -71,6 +71,8 @@ const agent_db = new Map()
  */
 const parcel_db = new Map()
 
+
+
 client.onParcelsSensing( async ( perceived_parcels ) => {
 
     for (const p of perceived_parcels) {
@@ -161,8 +163,8 @@ client.onParcelsSensing( parcels => {
         }
     }
 
-
-
+    
+   
 
     /**
      * Best option is selected
@@ -172,7 +174,8 @@ client.onParcelsSensing( parcels => {
         if(best_option[0] == "go_pick_up") 
         current_parcel = parcel_db.get(best_option.id)
         myAgent.push( best_option )
-}
+    }
+
 } )
 
 client.onAgentsSensing( ( agents ) => {
@@ -273,14 +276,29 @@ class IntentionRevision {
                 }
 
                 // Start achieving intention
+             
                 await intention.achieve()
                 // Catch eventual error and continue
                 .catch( error => {
                     // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
 
+                console.log(this.intention_queue.length)
+
                 // Remove from the queue
                 this.intention_queue.shift();
+
+                console.log("")
+                console.log(this.intention_queue.length)
+
+                if (this.intention_queue.length == 0 && me.carrying == false) {
+                    const predicate = ["patrolling"]
+                    const intention = new Intention( this, predicate );
+                    this.#intention_queue.push(intention );
+                }
+
+                console.log("")
+                console.log(this.intention_queue.length)
             }
             // Postpone next iteration at setImmediate
             await new Promise( res => setImmediate( res ) );
@@ -298,10 +316,14 @@ class IntentionRevision {
 class IntentionRevisionQueue extends IntentionRevision {
 
     async push ( predicate ) {
-        
+        if (this.intention_queue.length == 0) {
         // Check if already queued
         if ( this.intention_queue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
             return; // intention is already queued
+        } else {
+         
+            return; // intention is already queued
+        }
 
         console.log( 'IntentionRevisionReplace.push', predicate );
         const intention = new Intention( this, predicate );
@@ -393,6 +415,7 @@ class Intention {
                 try {
                     const plan_res = await this.#current_plan.execute( ...this.predicate );
                     this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
+                    
                     return plan_res
                 // or errors are caught so to continue with next plan
                 } catch (error) {
@@ -503,6 +526,17 @@ class GoPutDown extends Plan {
 
 }
 
+class Patrolling extends Plan {
+    static isApplicableTo (patrolling) {
+        return patrolling == "patrolling";        
+    }
+
+    
+
+    async exexute (patrolling) {
+        return;
+    }
+}
 
 class BlindMove extends Plan {
 
@@ -565,4 +599,5 @@ class BlindMove extends Plan {
 planLibrary.push( GoPickUp )
 planLibrary.push( BlindMove )
 planLibrary.push( GoPutDown)
+planLibrary.push( Patrolling)
 
