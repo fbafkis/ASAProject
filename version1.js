@@ -65,7 +65,7 @@ client.onTile( (x, y, delivery) => {
 
 var first = true;
 
-
+var id = 0;
 
 /**
  * @type {Map<string,[{id,name,x,y,score}]}
@@ -304,15 +304,16 @@ class IntentionRevision {
                 // Current intention
                 const intention = this.intention_queue[0];
                 
-                // Is queued intention still valid? Do I still want to achieve it?
-                // TODO this hard-coded implementation is an example
+                if(intention.predicate[0] != "patrolling") {
+                // Is queued intention still valid? Do I still want to0 achieve it?
+                // TODO this hard-coded implementation is an example -> FUTURE SELFS: Add case for Put Down
                 let id = intention.predicate[2]
                 let p = parcel_db.get(id)
                 if ( p && p.carriedBy ) {
                     console.log( 'Skipping intention because no more valid', intention.predicate )
                     continue;
                 }
-
+                }
                 // Start achieving intention
              
                 await intention.achieve()
@@ -330,9 +331,9 @@ class IntentionRevision {
                 console.log(this.intention_queue.length) */
 
                 if (this.intention_queue.length == 0 && me.carrying == false) {
-                    const predicate = ["patrolling"]
-                    const intention = new Intention( this, predicate );
-                    this.#intention_queue.push(intention );
+
+                    let idle = ["patrolling"];
+                    myAgent.push(idle)
                 }
 
                 /* console.log("")
@@ -353,8 +354,9 @@ class IntentionRevision {
 
 class IntentionRevisionQueue extends IntentionRevision {
 
-    async push ( predicate ) {
-        if (this.intention_queue.length == 0) {
+ 
+    async push ( predicate ) { 
+            if (this.intention_queue.length == 0) {
         // Check if already queued
         if ( this.intention_queue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
             return; // intention is already queued
