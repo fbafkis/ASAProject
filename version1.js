@@ -459,9 +459,9 @@ class Intention {
                 // and plan is executed and result returned
                 try {
                     console.log("tryin to execute into achieve");
-                    console.log(this.predicate);
+                    console.log("predicate: " + this.predicate);
                     const plan_res = await this.#current_plan.execute( ...this.predicate );
-                    //console.log(plan_res)
+                    console.log("plan res: " + plan_res);
                     this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
                     
                     return plan_res
@@ -581,13 +581,13 @@ class Patrolling extends Plan {
     }
 
     async execute (patrolling, x , y ) {
-        console.log("center tile x: "  + center_tile.x)
-        console.log("center tile y: "  + center_tile.y)
+        console.log("center tile x: "  + x)
+        console.log("center tile y: "  + y)
          console.log("Test")
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         
 
-        await this.subIntention( ['go_to', center_tile.x, center_tile.y] );
+        await this.subIntention( ['go_to', x, y] );
 
         return true;
     }
