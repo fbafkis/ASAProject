@@ -11,7 +11,7 @@ function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
     return dx + dy;
 }
 
-function distance_center(target_x, target_y, tile_x, tile_y) {
+function distance_coordinates(target_x, target_y, tile_x, tile_y) {
     const dx = Math.abs( Math.round(target_x) - Math.round(tile_x) )
     const dy = Math.abs( Math.round(target_y) - Math.round(tile_y) )
     return dx + dy;
@@ -32,11 +32,14 @@ client.onYou( ( {id, name, x, y, score, carrying} ) => {
 } )
 
 var parcel_decading_interval;
+var parcel_sensing_distance;
+var parcels_in_the_scope=false;
 
 var current_parcel;
 
 client.onConfig((config)=>{
     parcel_decading_interval = config.PARCEL_DECADING_INTERVAL;
+    parcel_sensing_distance = config.PARCELS_OBSERVATION_DISTANCE;
 })
 
 const map = {
@@ -131,7 +134,7 @@ client.onParcelsSensing( parcels => {
         var center_tile;
 
         for(const tile of map.tiles.values()) {
-           let current_d = distance_center( target_x, target_y, tile.x, tile.y )  
+           let current_d = distance_coordinates( target_x, target_y, tile.x, tile.y )  
             if ( current_d < closest ) {
                 closest = current_d
                 center_tile = tile
@@ -189,7 +192,6 @@ client.onParcelsSensing( parcels => {
                     if (parcel.reward > highest_value)
                     highest_value = parcel.reward;
                     best_option = option;
-                 //   console.log(best_option);
 
         } else if (option[0] == 'go_put_down' ) {
             let [go_put_down,x,y,delivery] = option;
@@ -297,6 +299,7 @@ class IntentionRevision {
 
     async loop ( ) {
         while ( true ) {
+           // console.log("int queue lenght: " + this.intention_queue.length + " parcel db size: "+ parcel_db.size + " me.carrying: " + me.carrying);
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
                 console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
@@ -307,7 +310,6 @@ class IntentionRevision {
                 console.log("pred[0]: " + intention.predicate[2]);
 
                 if(intention.predicate != "patrolling") {
-                    console.log("WORNG IF")
                 // Is queued intention still valid? Do I still want to0 achieve it?
                 // TODO this hard-coded implementation is an example -> FUTURE SELFS: Add case for Put Down
                 let id = intention.predicate[2]
@@ -334,8 +336,9 @@ class IntentionRevision {
                /*  console.log("")
                 console.log(this.intention_queue.length) */
 
-                if (this.intention_queue.length == 0 && me.carrying == false) {
-                    console.log("queue empty and not carrying")
+                if (this.intention_queue.length == 0 && me.carrying == false && parcel_db.size==0) {
+                    console.log("queue empty and not carrying and parcel db")
+                    console.log("parcel db size: "+ parcel_db.size);
                     let idle = ['patrolling', 0, 0];
                     myAgent.push(idle)
                 }
@@ -569,6 +572,17 @@ class GoPutDown extends Plan {
         await client.putdown()
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         me.carrying = false
+
+        for (const [key , parcel] of parcel_db.entries()) {
+            console.log("parcel x: " + parcel[0].x + " parcel y: " + parcel[0].y);
+            var current_distance = distance_coordinates(parcel[0].x, parcel[0].y, me.x, me.y )
+            console.log("CURRENT DISTANCE: "+ current_distance);
+
+        if(current_distance>=parcel_sensing_distance){
+            parcel_db.delete(key);
+        }
+          }
+
         return true;
     }
 
