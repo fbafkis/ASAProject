@@ -304,7 +304,10 @@ class IntentionRevision {
                 // Current intention
                 const intention = this.intention_queue[0];
                 
-                if(intention.predicate[0] != "patrolling") {
+                console.log("pred[0]: " + intention.predicate[2]);
+
+                if(intention.predicate != "patrolling") {
+                    console.log("WORNG IF")
                 // Is queued intention still valid? Do I still want to0 achieve it?
                 // TODO this hard-coded implementation is an example -> FUTURE SELFS: Add case for Put Down
                 let id = intention.predicate[2]
@@ -318,8 +321,9 @@ class IntentionRevision {
              
                 await intention.achieve()
                 // Catch eventual error and continue
-                .catch( error => {
+               .catch( error => {
                     // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
+                    console.log(error);
                 } );
 
                 //console.log(this.intention_queue.length)
@@ -331,8 +335,8 @@ class IntentionRevision {
                 console.log(this.intention_queue.length) */
 
                 if (this.intention_queue.length == 0 && me.carrying == false) {
-
-                    let idle = ["patrolling"];
+                    console.log("queue empty and not carrying")
+                    let idle = ['patrolling', 0, 0];
                     myAgent.push(idle)
                 }
 
@@ -369,7 +373,6 @@ class IntentionRevisionQueue extends IntentionRevision {
         const intention = new Intention( this, predicate );
         this.intention_queue.push( intention );
     }
-
 }
 
 
@@ -434,6 +437,8 @@ class Intention {
      * Using the plan library to achieve an intention
      */
     async achieve () {
+
+
         // Cannot start twice
         if ( this.#started)
             return this;
@@ -453,14 +458,16 @@ class Intention {
                 this.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
                 // and plan is executed and result returned
                 try {
+                    console.log("tryin to execute into achieve");
+                    console.log(this.predicate);
                     const plan_res = await this.#current_plan.execute( ...this.predicate );
-                    console.log(plan_res)
+                    //console.log(plan_res)
                     this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
                     
                     return plan_res
                 // or errors are caught so to continue with next plan
                 } catch (error) {
-                    this.log( 'failed intention', ...this.predicate,'with plan', planClass.name, 'with error:', ...error );
+                    this.log( 'failed intention', ...this.predicate,'with plan', planClass.name, 'with error:', error );
                 }
             }
 
@@ -568,15 +575,20 @@ class GoPutDown extends Plan {
 }
 
 class Patrolling extends Plan {
-    static isApplicableTo (patrolling) {
-        return patrolling == "patrolling";        
+
+    static isApplicableTo (patrolling, x, y) {
+        return patrolling == 'patrolling';        
     }
 
-
-    async exexute (patrolling) {
-        console.log("Test")
+    async execute (patrolling, x , y ) {
+        console.log("center tile x: "  + center_tile.x)
+        console.log("center tile y: "  + center_tile.y)
+         console.log("Test")
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        
+
         await this.subIntention( ['go_to', center_tile.x, center_tile.y] );
+
         return true;
     }
 }
