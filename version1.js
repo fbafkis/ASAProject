@@ -339,12 +339,17 @@ class IntentionRevision {
                 if (this.intention_queue.length == 0 && me.carrying == false && parcel_db.size==0) {
                     console.log("queue empty and not carrying and parcel db")
                     console.log("parcel db size: "+ parcel_db.size);
-                    let idle = ['patrolling', 0, 0];
+                    let idle = ['patrolling', 9, 9];
                     myAgent.push(idle)
                 }
 
                 /* console.log("")
                 console.log(this.intention_queue.length) */
+            } else if (this.intention_queue.length == 0 && me.carrying == false && parcel_db.size==0) {
+                console.log("queue empty and not carrying and parcel db")
+                console.log("parcel db size: "+ parcel_db.size);
+                let idle = ['patrolling', 9, 9];
+                myAgent.push(idle)
             }
             // Postpone next iteration at setImmediate
             await new Promise( res => setImmediate( res ) );
