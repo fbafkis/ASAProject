@@ -68,7 +68,8 @@ client.onTile( (x, y, delivery) => {
 
 var first = true;
 
-var id = 0;
+//TODO: Other Solution for complexer maps - Maybe put number of entries as a list
+var patrolling_area = false;
 
 /**
  * @type {Map<string,[{id,name,x,y,score}]}
@@ -79,6 +80,16 @@ const agent_db = new Map()
  * @type {Map<string,[{id, x, y, carriedBy, reward}]}
  */
 const parcel_db = new Map()
+
+/**
+ * @type {Map<string,[{x_coordinate}]}
+ */
+const patrolling_x_coordinates = new Map()
+
+/**
+ * @type {Map<string,[{y_coordinate}]}
+ */
+const patrolling_y_coordinates = new Map()
 
 
 
@@ -116,7 +127,8 @@ client.onParcelsSensing( parcels => {
     var target_x;
     var target_y;
 
-        if (map.height % 2 == 0) {
+    //Use Center of the Map as Patrolling Aim
+       /* if (map.height % 2 == 0) {
             if (map.width % 2 == 0) {
             target_y = map.height / 2;
             target_x = map.width / 2; 
@@ -128,7 +140,21 @@ client.onParcelsSensing( parcels => {
             target_y = (map.height / 2) + 1;
             target_x = (map.width / 2);
         }
-        
+        */
+
+    //Divide Map in 3rds and patroll between 1/3 and 2/3
+       target_y = Math.floor(map.height / 3) + 1;
+       target_x = Math.floor(map.width / 3) + 1;
+
+       patrolling_x_coordinates.set("1", target_x);
+       patrolling_y_coordinates.set("1", target_y);
+
+       patrolling_x_coordinates.set("2", (target_x * 2));
+       patrolling_y_coordinates.set("2", (target_y * 2));
+       
+
+
+
 
         var closest = Number.MAX_VALUE;
         var center_tile;
@@ -337,18 +363,33 @@ class IntentionRevision {
                 console.log(this.intention_queue.length) */
 
                 if (this.intention_queue.length == 0 && me.carrying == false && parcel_db.size==0) {
-                    console.log("queue empty and not carrying and parcel db")
-                    console.log("parcel db size: "+ parcel_db.size);
-                    let idle = ['patrolling', 9, 9];
-                    myAgent.push(idle)
+                 //   console.log("queue empty and not carrying and parcel db")
+                 //   console.log("parcel db size: "+ parcel_db.size);
+                    let idle;
+                    if (patrolling_area == false) {
+                    idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
+                    patrolling_area = true;
+                    } else {
+                    idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
+                    patrolling_area = false;
+                    }
+                 myAgent.push(idle)
                 }
 
                 /* console.log("")
                 console.log(this.intention_queue.length) */
             } else if (this.intention_queue.length == 0 && me.carrying == false && parcel_db.size==0) {
-                console.log("queue empty and not carrying and parcel db")
-                console.log("parcel db size: "+ parcel_db.size);
-                let idle = ['patrolling', 9, 9];
+                // TODO: Why does not only else work?!
+              //  console.log("queue empty and not carrying and parcel db")
+              //  console.log("parcel db size: "+ parcel_db.size);
+                let idle;
+                    if (patrolling_area == false) {
+                    idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
+                    patrolling_area = true;
+                    } else {
+                    idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
+                    patrolling_area = false;
+                    }
                 myAgent.push(idle)
             }
             // Postpone next iteration at setImmediate
@@ -600,12 +641,8 @@ class Patrolling extends Plan {
     }
 
     async execute (patrolling, x , y ) {
-        console.log("center tile x: "  + x)
-        console.log("center tile y: "  + y)
-         console.log("Test")
-        if ( this.stopped ) throw ['stopped']; // if stopped then quit
         
-
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit      
         await this.subIntention( ['go_to', x, y] );
 
         return true;
