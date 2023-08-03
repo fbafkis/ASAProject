@@ -2,8 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjA5ZmQ2NDllNzZlIiwibmFtZSI6Im1hcmNvIiwiaWF0IjoxNjc5OTk3Njg2fQ.6_zmgL_C_9QgoOX923ESvrv2i2_1bgL_cWjMw4M7ah4'
-)
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImI4NWY1MWE4ZTg4IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTEwNDk3NzV9.n0wlpwc5301NNDfJtxG7rs4sd9MsYTFaClHMxYD61mA')
 
 function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
     const dx = Math.abs( Math.round(x1) - Math.round(x2) )
