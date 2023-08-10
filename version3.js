@@ -29,10 +29,10 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.score = score  
 } )
 
-//TODO: Write Patrolling_Case_Selection Function + Try if me.carrying + me.parcel_count works as well
+//TODO: Try if me.carrying + me.parcel_count works as well
     
-var me_carrying;
-var me_parcel_count = 0;
+me.carrying;
+me.parcel_count = 0;
 var parcel_decading_interval; //String
 var parcel_sensing_distance;
 var max_parcels; //Integer
@@ -45,7 +45,7 @@ client.onConfig((config)=>{
     parcel_decading_interval = config.PARCEL_DECADING_INTERVAL;
     parcel_sensing_distance = config.PARCELS_OBSERVATION_DISTANCE;
     max_parcels = config.PARCELS_MAX;
-    me_carrying = false;
+    me.carrying = false;
 })
 
 const map = {
@@ -125,6 +125,33 @@ const patrolling_y_coordinates = new Map()
     return;
 }
 
+function patrolling_case_selection(){
+
+    let idle;
+
+         //Check Quadrant Counter is in bounds
+       if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
+          patrolling_area_counter = 1;
+       }
+
+      console.log(patrolling_area_counter)
+     if (patrolling_area_counter == 1) {
+        idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
+        patrolling_area_counter++;
+        } else if (patrolling_area_counter == 2){
+            idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
+            patrolling_area_counter++;
+             } else if (patrolling_area_counter == 3){
+                idle = ['patrolling', patrolling_x_coordinates.get("3"), patrolling_y_coordinates.get("3")];     
+                patrolling_area_counter++;
+                } else if (patrolling_area_counter == 4){
+                    idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
+                    patrolling_area_counter++;
+                    }
+                    
+                 myAgent.push(idle)
+}
+
 client.onParcelsSensing( async ( perceived_parcels ) => {
 
     for (const p of perceived_parcels) {
@@ -161,11 +188,11 @@ client.onParcelsSensing( parcels => {
     const options = []
  
 
-    if (parcel_decading_interval == "infinite" && me_parcel_count < max_parcels){
+    if (parcel_decading_interval == "infinite" && me.parcel_count < max_parcels){
     for (const parcel of parcels.values()) {
         if ( ! parcel.carriedBy )
             options.push( [ 'go_pick_up', parcel.x, parcel.y, parcel.id ] );
-            } }  else if (parcel_decading_interval == "infinite" && me_parcel_count >= max_parcels) {
+            } }  else if (parcel_decading_interval == "infinite" && me.parcel_count >= max_parcels) {
         for (const tile of map.tiles.values()) {
             if (tile.delivery) {      
                  options.push( [ 'go_put_down', tile.x, tile.y, tile.delivery ] );
@@ -312,9 +339,9 @@ class IntentionRevision {
 
     async loop ( ) {
         while ( true ) {
-           // console.log("Parcel Count:" + me_parcel_count)
+           // console.log("Parcel Count:" + me.parcel_count)
              console.log("IQ: " + this.intention_queue.length)
-            console.log("ME CARRYING " + me_carrying)
+            console.log("ME CARRYING " + me.carrying)
             console.log("PARCEL DB ")
             console.log(parcel_db)
 
@@ -352,8 +379,8 @@ class IntentionRevision {
                 this.intention_queue.shift();
 
               
-               // console.log("Intention Queue before if -> Parcel Count: " + me_parcel_count)
-                if (this.#intention_queue.length == 0 && me_parcel_count == max_parcels) {
+               // console.log("Intention Queue before if -> Parcel Count: " + me.parcel_count)
+                if (this.#intention_queue.length == 0 && me.parcel_count == max_parcels) {
 
                     console.log("GOES IN DELIVERY IF!")
                     const delivery_options = [];
@@ -381,91 +408,29 @@ class IntentionRevision {
                      */
                     if ( best_delivery_option ) {
                         myAgent.push( best_delivery_option )
-                    }} else if (this.intention_queue.length == 0 && me_carrying == false && parcel_db.size==0) {
+                    }} else if (this.intention_queue.length == 0 && me.carrying == false && parcel_db.size==0) {
                         console.log("GOES IN PATROLLING IF!")
 
-                    let idle;
-
-                    //Check Quadrant Counter is in bounds
-                    if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
-                        patrolling_area_counter = 1;
-                    }
-
-                    console.log(patrolling_area_counter)
-                    if (patrolling_area_counter == 1) {
-                    idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 2){
-                    idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 3){
-                    idle = ['patrolling', patrolling_x_coordinates.get("3"), patrolling_y_coordinates.get("3")];     
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 4){
-                    idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
-                    patrolling_area_counter++;
-                    }
-                 myAgent.push(idle)
+                   patrolling_case_selection();
                 }
-            }  else if (this.intention_queue.length == 0 && me_carrying == false) {
+            }  else if (this.intention_queue.length == 0 && me.carrying == false) {
                 console.log("2 - GOES IN PATROLLING IF!")
 
                 // TODO: Patrolling only if parcel_db is empty, if parcel is in parcel db -> Reasoning function!
 
                 if (parcel_db.size == 0) {        
-              let idle;
+             
+             patrolling_case_selection();
 
-              //Check Quadrant Counter is in bounds
-              if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
-                  patrolling_area_counter = 1;
-              }
-
-              console.log(patrolling_area_counter)
-              if (patrolling_area_counter == 1) {
-              idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
-              patrolling_area_counter++;
-              } else if (patrolling_area_counter == 2){
-              idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
-              patrolling_area_counter++;
-              } else if (patrolling_area_counter == 3){
-              idle = ['patrolling', patrolling_x_coordinates.get("3"), patrolling_y_coordinates.get("3")];     
-              patrolling_area_counter++;
-              } else if (patrolling_area_counter == 4){
-              idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
-              patrolling_area_counter++;
-              }
-           myAgent.push(idle)
 
           } else if (parcel_db.size > 0) {
 
-            let idle;
-
-            //Check Quadrant Counter is in bounds
-            if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
-                patrolling_area_counter = 1;
-            }
-
-            console.log(patrolling_area_counter)
-            if (patrolling_area_counter == 1) {
-            idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
-            patrolling_area_counter++;
-            } else if (patrolling_area_counter == 2){
-            idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
-            patrolling_area_counter++;
-            } else if (patrolling_area_counter == 3){
-            idle = ['patrolling', patrolling_x_coordinates.get("3"), patrolling_y_coordinates.get("3")];     
-            patrolling_area_counter++;
-            } else if (patrolling_area_counter == 4){
-            idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
-            patrolling_area_counter++;
-            }
-
-         myAgent.push(idle)
+           patrolling_case_selection();
 
           }
 
             }  
-             else if (this.intention_queue.length == 0 && me_carrying == true) {
+             else if (this.intention_queue.length == 0 && me.carrying == true) {
                 console.log("3 - GOES IN PATROLLING IF!")
 
             
@@ -473,56 +438,16 @@ class IntentionRevision {
                 
 
                 if (parcel_decading_interval == "infinite") {
-                    
-                    let idle;
+             
+                    patrolling_case_selection();
 
-                    //Check Quadrant Counter is in bounds
-                    if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
-                        patrolling_area_counter = 1;
-                    }
-
-                    console.log(patrolling_area_counter)
-                    if (patrolling_area_counter == 1) {
-                    idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 2){
-                    idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 3){
-                    idle = ['patrolling', patrolling_x_coordinates.get("3"), patrolling_y_coordinates.get("3")];     
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 4){
-                    idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
-                    patrolling_area_counter++;
-                    }
-                 myAgent.push(idle)
                 } else {
 
                     console.log("4 - GOES IN PATROLLING IF!")
 
                  //TODO: Check if parcel db size is 0 or > 0; if 0 -> deliver; if > 0 -> reward function to determine best option; patrolling as a current gap filler
-                    let idle;
-
-                    //Check Quadrant Counter is in bounds
-                    if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
-                        patrolling_area_counter = 1;
-                    }
-
-                    console.log(patrolling_area_counter)
-                    if (patrolling_area_counter == 1) {
-                    idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 2){
-                    idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 3){
-                    idle = ['patrolling', patrolling_x_coordinates.get("3"), patrolling_y_coordinates.get("3")];     
-                    patrolling_area_counter++;
-                    } else if (patrolling_area_counter == 4){
-                    idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
-                    patrolling_area_counter++;
-                    }
-                 myAgent.push(idle)
+                   
+                 patrolling_case_selection();
 
                 }
             }
@@ -727,8 +652,8 @@ class GoPickUp extends Plan {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await client.pickup()
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        me_carrying = true
-        me_parcel_count++;
+        me.carrying = true
+        me.parcel_count++;
        /*  console.log(parcel_db)
         parcel_db.delete(current_parcel.id)
         console.log("----")
@@ -752,8 +677,8 @@ class GoPutDown extends Plan {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await client.putdown()
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        me_carrying = false
-        me_parcel_count = 0;
+        me.carrying = false
+        me.parcel_count = 0;
 
         for (const [key , parcel] of parcel_db.entries()) {
             console.log("parcel x: " + parcel[0].x + " parcel y: " + parcel[0].y);
