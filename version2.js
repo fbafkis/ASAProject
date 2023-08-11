@@ -702,7 +702,7 @@ class Patrolling extends Plan {
         
         console.log(problem);
 
-        let domain = await readFile('./domain_patrolling.pddl');
+        let domain = await readFile('./domain_patrolling_symplified.pddl');
        
         console.log("DOMAIN" + domain);
 
