@@ -29,6 +29,7 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.score = score  
 } )
 
+//TODO: Try if me.carrying + me.parcel_count works as well
     
 me.carrying;
 me.parcel_count = 0;
@@ -393,7 +394,7 @@ class IntentionRevision {
                 this.intention_queue.shift();
 
               
-                //Todo: Check for case -> other agent picks up parcel, no parcel spans anymore -> endless loop because we wait for max_parcels
+               // console.log("Intention Queue before if -> Parcel Count: " + me.parcel_count)
                 if (this.#intention_queue.length == 0 && me.parcel_count == max_parcels) {
 
                     console.log("GOES IN DELIVERY IF!")
@@ -422,7 +423,11 @@ class IntentionRevision {
                      */
                     if ( best_delivery_option ) {
                         myAgent.push( best_delivery_option )
-                    }} 
+                    }} else if (this.intention_queue.length == 0 && me.carrying == false && parcel_db.size==0) {
+                        console.log("GOES IN PATROLLING IF!")
+
+                   patrolling_case_selection();
+                }
             }  else if (this.intention_queue.length == 0 && me.carrying == false) {
                 console.log("2 - GOES IN PATROLLING IF!")
 
