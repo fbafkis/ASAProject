@@ -286,6 +286,8 @@ client.onParcelsSensing(parcels => {
             }
         }
 
+        ///TODO: maybe cleanup here the parceldb from no more existing parcels.  
+
         /// 3. Calculate the agent final reward (sum) in case of direct delivery (no picking up new parcels).
 
         var agent_total_final_reward_no_pickup = 0;
@@ -374,22 +376,20 @@ client.onParcelsSensing(parcels => {
 
             for (const [reward, parcel] of valid_parcels.entries()) {
 
-                if (reward > highest_reward){
+                if (reward > highest_reward) {
                     highest_reward = reward;
                     best_parcel = parcel[0];
                 }
             }
 
             ///TODO: set as best option gopickup the best parcel. 
-            
-            
+
+            best_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id]; //Check if deliery parameter is really a boolean/ if it is needed! 
+
+
 
         } else {
-            let [go_put_down, x, y, delivery] = option;
-            option.x = agent_nearest_delivery_tile.x;
-            option.y = agent_nearest_delivery_tile.y;
-
-            best_option = option; /// ???????????????????????????????????????????????????????
+            best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true]; //Check if deliery parameter is really a boolean/ if it is needed! 
         }
 
     } ////// END OF WORK IN PROGRESS 
@@ -413,9 +413,6 @@ client.onParcelsSensing(parcels => {
         }
     }
 
-
-
-
     /**
      * Best option is selected
      */
@@ -425,7 +422,6 @@ client.onParcelsSensing(parcels => {
             current_parcel = parcel_db.get(best_option.id)
         myAgent.push(best_option)
     }
-
 })
 
 client.onAgentsSensing((agents) => {
