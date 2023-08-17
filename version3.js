@@ -182,17 +182,25 @@ function reward_reasoning_function() {
 
     var direct_min_del_tile_distance = -1;
     var agent_nearest_delivery_tile;
-    delivery_tiles_database.forEach(dt => {
-        let distance = distance_coordinates(dt.x, dt.y, me.x, me.y);
-        if (direct_min_del_tile_distance == -1) {
+    for (const dt of delivery_tiles_database ) {
+         let distance = distance_coordinates(dt.x, dt.y, me.x, me.y);
+          if (direct_min_del_tile_distance == -1) {
             direct_min_del_tile_distance = distance;
             agent_nearest_delivery_tile = dt;
         } else {
-            if (distance < direct_min_del_tile_distance)
+            if (distance < direct_min_del_tile_distance) {
                 direct_min_del_tile_distance = distance;
             agent_nearest_delivery_tile = dt;
         }
-    });
+        }
+    }    
+       
+
+    console.log("Delivery Tiles Db:");
+    console.log(delivery_tiles_database);
+    
+    console.log("Agent nearest DT");
+    console.log(agent_nearest_delivery_tile);
 
     /// 2. Calculate the estimated final score for each parcel that is carried right 
     /// now in case of direct delivery (no picking up new parcels). 
@@ -228,6 +236,9 @@ function reward_reasoning_function() {
             my_parcels_db_no_pickup.set(p[0], final_reward);
         }
     }
+
+    console.log("Parcel Reward Simulation:")
+    console.log(my_parcels_db_no_pickup);
 
     ///TODO: maybe cleanup here the parceldb from no more existing parcels.  
 
@@ -331,6 +342,7 @@ function reward_reasoning_function() {
     } else {
         final_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true]; //Check if deliery parameter is really a boolean/ if it is needed! 
     }
+    console.log("FINAL OPTION:" + final_option);
 
     return final_option;
 
