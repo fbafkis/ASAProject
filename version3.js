@@ -91,6 +91,11 @@ const agent_db = new Map()
 const parcel_db = new Map()
 
 /**
+ * @type {Map<string,[{id, x, y, carriedBy, reward}]}
+ */
+const me_carried_parcels = new Map()
+
+/**
  * @type {Map<string,[{x_coordinate}]}
  */
 const patrolling_x_coordinates = new Map()
@@ -109,9 +114,6 @@ function select_patrolling_points() {
 
     target_y = Math.floor(map.height / 3) + 1;
     target_x = Math.floor(map.width / 3) + 1;
-
-    console.log("TARGET X: " + target_x)
-    console.log("TARGET Y: " + target_y)
 
     //TODO: If patrolling is specified - check if tile is undefined
 
@@ -172,32 +174,13 @@ function patrolling_case_selection() {
 
 function reward_reasoning_function() {
 
+    console.log("REWARD FUNCTION IS CALLED!");
+
     // Reward Decision Function
 
-    ///////////////////////////////////////////////////////////
+     // 1. Select the suitable decading_factor for our given parcel degredation
 
-    /// 1. Finding the nearest delviery tile respect to the current position of the agent. 
-
-    let valid_parcels = new Map;
-
-    var direct_min_del_tile_distance = -1;
-    var agent_nearest_delivery_tile;
-    delivery_tiles_database.forEach(dt => {
-        let distance = distance_coordinates(dt.x, dt.y, me.x, me.y);
-        if (direct_min_del_tile_distance == -1) {
-            direct_min_del_tile_distance = distance;
-            agent_nearest_delivery_tile = dt;
-        } else {
-            if (distance < direct_min_del_tile_distance)
-                direct_min_del_tile_distance = distance;
-            agent_nearest_delivery_tile = dt;
-        }
-    });
-
-    /// 2. Calculate the estimated final score for each parcel that is carried right 
-    /// now in case of direct delivery (no picking up new parcels). 
-
-    let decading_factor;
+    var decading_factor;
 
     switch (parcel_decading_interval) {
         case '1s': decading_factor = 1;
@@ -218,125 +201,161 @@ function reward_reasoning_function() {
             break;
     }
 
-    var my_parcels_db_no_pickup = new Map;
+   
+    // 2.1. Finding the nearest delviery tile respect to the current position of the agent. 
 
-    for (const [key, p] of parcel_db.entries()) {
-        if (p[0].carriedBy == me.id) {
-            let final_reward = p[0].reward - Math.round(direct_min_del_tile_distance * decading_factor);
-            if (final_reward < 0)
-                final_reward = 0;
-            my_parcels_db_no_pickup.set(p[0], final_reward);
+    // distance of closest delivery tile to agents position + closest delivery tile
+    var distance_closest_delivery_tile_agent = -1;
+    var agent_nearest_delivery_tile;
+
+    for (const dt of delivery_tiles_database ) {
+         let distance = distance_coordinates(dt.x, dt.y, me.x, me.y);
+          if (distance_closest_delivery_tile_agent == -1) {
+            distance_closest_delivery_tile_agent = distance;
+            agent_nearest_delivery_tile = dt;
+        } else {
+            if (distance < distance_closest_delivery_tile_agent) {
+                distance_closest_delivery_tile_agent = distance;
+            agent_nearest_delivery_tile = dt;
         }
-    }
+        }
+    }    
+       
+  
+    console.log("Agent nearest DT");
+    console.log(agent_nearest_delivery_tile);
 
-    ///TODO: maybe cleanup here the parceldb from no more existing parcels.  
+  // 2.2 Simulate the total reward of all carried parcels in case of an instant delivery
 
-    /// 3. Calculate the agent final reward (sum) in case of direct delivery (no picking up new parcels).
+  var reward_if_deliver_instant = 0;
 
-    var agent_total_final_reward_no_pickup = 0;
+  console.log("My carried parcels are:");
+  console.log(me_carried_parcels)
+  
 
-    for (const [parcel, final_reward] of my_parcels_db_no_pickup.entries()) {
-        agent_total_final_reward_no_pickup += final_reward;
-    }
+  
 
-    /// 4. The loop to estimate for each perceived parcel the final reward in case of picking up 
-
-    for (const [key, p] of parcel_db.entries()) {
-
-        ///  4.1 Find and calulate related distance of the nearest delivery tile for the current analyzed parcel. 
-
-        let parcel_min_del_tile_distance = -1;
-        var parcel_nearest_delivery_tile;
-        delivery_tiles_database.forEach(dt => {
-            let distance = distance_coordinates(dt.x, dt.y, p[0].x, p[0].y);
-            if (parcel_min_del_tile_distance == -1) {
-                parcel_min_del_tile_distance = distance;
-                parcel_nearest_delivery_tile = dt;
-            } else {
-                if (distance < parcel_min_del_tile_distance)
-                    parcel_min_del_tile_distance = distance;
-                parcel_nearest_delivery_tile = dt;
+    for (const [key, value] of me_carried_parcels.entries()) {
+            let individual_reward = value[0].reward - Math.round(distance_closest_delivery_tile_agent * decading_factor); //Todo: Check if rounding or cutoff is needed
+            if (individual_reward < 0) {
+            individual_reward = 0;
             }
-        });
-
-        /// 4.2 Calculating also the distance between the agent and the currently analyzed parcel. Then the sum of 
-        /// delivery tile - parcel distance and agent - parcel distance is computed to obtain the total distance for the 
-        /// currently analyzed parcel. 
-
-        let parcel_agent_distance = distance(p[0].x, p[0].y, me.x, me.y);
-
-        var parcel_total_distance = parcel_min_del_tile_distance + parcel_agent_distance;
-
-        /// 4.3 Calculate the final score for each parcel currently carried by the agent. 
-
-        let my_parcels_db_pickup = new Map;
-
-        for (const [key, p] of parcel_db.entries()) {
-            if (p[0].carriedBy == me.id) {
-                let final_reward = p[0].reward - Math.round(parcel_total_distance * decading_factor);
-                if (final_reward < 0)
-                    final_reward = 0;
-                my_parcels_db_pickup.set(p[0], final_reward);
-            }
+            reward_if_deliver_instant += individual_reward;
         }
+    
 
-        /// 4.4 Calculate the currently analyzed parcel final reward.
+    console.log("PARCEL DB")
+    console.log(parcel_db);
 
+    console.log("The parcels that Agent is carrying are: ");
+    console.log(me_carried_parcels);
 
-        let current_parcel_final_reward = p[0].final_reward - Math.round(parcel_total_distance * decading_factor);
+    console.log("Parcel Reward Simulation direct Delivery:")
+    console.log(reward_if_deliver_instant);
 
-        if (current_parcel_final_reward < 0) {
-            current_parcel_final_reward = 0;
-        }
+    //TODO: maybe cleanup here the parceldb from no more existing parcels.  
 
-        /// 4.5 Calculating the agent final reward (sum of all carried parcels + currently analyzed perceived parcel reward estimations).
+ // 3. Simulate the total reward if the agent picks up a newly perceived parcel
 
-        var agent_total_final_reward_pickup = current_parcel_final_reward;
+ var parcel_with_highest_reward;
+ var highest_reward_of_parcels = 0;
 
-        for (const [key, final_reward] of my_parcels_db_pickup.entries()) {
-            agent_total_final_reward_pickup += final_reward;
-        }
+  for (const [key, value] of parcel_db.entries()) {
+    
+ // 3.1 Find the nearest delivery tile to the parcel we simulate picking up + calculate the distence between the agent and the parcel
 
-        /// 4.5 Comparison between the agent's final reward in the case of picking up the currently analyzed perceived parcel vs. the case of not picking up any parcel. 
-        /// If picking up the parcel grants a gain in terms of reward, the currently analyzed perceived parcel is added to the list of valid parcels. 
+ var distance_closest_delivery_tile_parcel = -1;
+ var parcel_closest_delivery_tile;
+ var parcel_agent_distance = 0;
+ var parcel_total_distance = 0;
 
-        if (agent_total_final_reward_pickup > agent_total_final_reward_no_pickup) {
-            valid_parcels.set(agent_total_final_reward_pickup, p[0]);
-        }
+ for (const dt of delivery_tiles_database ) {
+      let distance = distance_coordinates(dt.x, dt.y, value[0].x, value[0].y);
+       if (distance_closest_delivery_tile_parcel == -1) {
+         distance_closest_delivery_tile_parcel = distance;
+         parcel_closest_delivery_tile = dt;
+     } else {
+         if (distance < distance_closest_delivery_tile_parcel) {
+            distance_closest_delivery_tile_parcel = distance;
+             parcel_closest_delivery_tile = dt;
+     }
+     }
+ }    
+ console.log("Closest Delivery Tile to parcel " + value[0].id + " is:");
+ console.log(parcel_closest_delivery_tile);
 
-    }  /// End of perceived parcels loop. 
+         parcel_agent_distance = distance_coordinates(value[0].x, value[0].y, me.x, me.y);
+         parcel_total_distance = distance_closest_delivery_tile_parcel + parcel_agent_distance;
 
-    /// 5. Check if there is any parcel in the list of the valid parcels (the perceived parcel that likely, due to the estimation done, 
-    /// will grant a gain in terms of agent's total final reward). If the list is empty the go_delivery option is selected as the best one. 
-    /// Otherwise the go_pickup option for the parcel that grants the highest reward is selected as the best one. 
+console.log("Complete distance for parcel " + key + " is: ");
+console.log(parcel_total_distance);
 
-    var final_option;
+     // 3.2 Calculate the currently analyzed parcel final reward.
+     var current_parcel_final_reward = 0;
 
-    if (valid_parcels.length > 0) {
+     current_parcel_final_reward = value[0].reward - Math.round(parcel_total_distance * decading_factor);
 
-        var best_parcel;
-        var highest_reward = 0;
+     if (current_parcel_final_reward < 0) {
+        console.log ("Skipping - parcel reward is below 0, parcel reward = " + current_parcel_final_reward);
+         }
 
-        for (const [reward, parcel] of valid_parcels.entries()) {
+    console.log("Current Parcel " + key + " Reward = " + current_parcel_final_reward);
+ /// 3.3 Calculate the reward for all carried parcels in the case of picking up new parcel p
 
-            if (reward > highest_reward) {
-                highest_reward = reward;
-                best_parcel = parcel[0];
-            }
-        }
-        ///TODO: set as best option gopickup the best parcel.
-        
-        
-        final_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id]; //Check if deliery parameter is really a boolean/ if it is needed! 
-    } else {
-        final_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true]; //Check if deliery parameter is really a boolean/ if it is needed! 
+ var projected_reward_me_parcels = 0;
+
+ for (const [key, value] of me_carried_parcels.entries()) {
+    let individual_reward = value[0].reward - Math.round(parcel_total_distance * decading_factor);
+    if (individual_reward < 0) {
+        individual_reward = 0;
     }
+    
+    projected_reward_me_parcels += individual_reward;
+ }
+ console.log("All carried Parcel Reward Simulation Pick Up new parcel:")
+ console.log(projected_reward_me_parcels);
 
-    return final_option;
+ /// 3.4 Combining projected reward of current parcel with the projected reward of all parcels the agent carries
+
+ var sum_after_pick_up = 0;
+
+ sum_after_pick_up = projected_reward_me_parcels + current_parcel_final_reward;
+
+ console.log ("The Final reward if we pick up parcel " + key + " is: " + sum_after_pick_up);
+
+ /// 4 Compare reward of picking up current parcel with the highest reward out of parcel_db
+
+ if (sum_after_pick_up > highest_reward_of_parcels) {
+    highest_reward_of_parcels = sum_after_pick_up;
+    parcel_with_highest_reward = key;
+    console.log("Parcel " + key + " offers the best reward with: " + highest_reward_of_parcels);
+ } else {
+    console.log("Skipping - Parcel " + key + " has a lower reward than the best option");
+    console.log("Parcel " + parcel_with_highest_reward + " still offers the best reward with: " + highest_reward_of_parcels)
+    continue;
+ }
+}
+
+// 5 Compare parcel that offers us the highest reward (when picking it up) with delivering currently carried parcels straight away and push option to agent
+
+var best_option;
+
+if (highest_reward_of_parcels > reward_if_deliver_instant) {
+
+    let selected_parcel = parcel_db.get(parcel_with_highest_reward);
+    console.log(selected_parcel);
+    best_option = ['go_pick_up', selected_parcel[0].x, selected_parcel[0].y, selected_parcel[0].id];
+    console.log("We push the following intention to the agent: ");
+    myAgent.push(best_option)
+} else if (highest_reward_of_parcels <= reward_if_deliver_instant && me.carrying == true){
+    console.log(agent_nearest_delivery_tile);
+    best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, agent_nearest_delivery_tile.delivery];
+    console.log("We push the following intention to the agent: ");
+    console.log(best_option);
 
 }
 
-
+}
 
 
 
@@ -367,6 +386,8 @@ client.onParcelsSensing(parcels => {
 
     // TODO revisit beliefset revision so to trigger option generation only in the case a new parcel is observed
 
+    console.log("PARCELS: " + parcels);
+
     /**
      * Options generation
      */
@@ -383,8 +404,10 @@ client.onParcelsSensing(parcels => {
                 options.push(['go_put_down', tile.x, tile.y, tile.delivery]);
             }
         }
-    } else if (parcel_decading_interval != 'infinite') {
-        options.push(reward_reasoning_function());
+    } else if (parcel_decading_interval != 'infinite' && me.carrying != "undefined") {
+        console.log("I call reward function");
+        console.log("Me.Carrying is: ", me.carrying);
+        reward_reasoning_function();
     }
 
     /* for (const option of options) { //Checking all available Options -> Later Version delete it
@@ -396,53 +419,12 @@ client.onParcelsSensing(parcels => {
      */
     let best_option;
 
-    //distance Decision Function
+  //TODO: Create adapted reward function for NO (infinete degredation ) - for all 2 cases
+  //TODO: -> The new reward function does not work for them since it is either only delivering or only picking up
+  //TODO: Push best option to the agent directly from the function
+  
 
-    let nearest = Number.MAX_VALUE;
-    /*    
-       for (const option of options) {
-           if ( option[0] == 'go_pick_up' ) {
-               let [go_pick_up,x,y,id] = option;
-             
-               let current_d = distance( {x, y}, me )       
-               if ( current_d < nearest ) {
-                   best_option = option
-                   nearest = current_d
-               }
-    */
-    // Reward Decision Function
-    let highest_value = 0;
-    for (const option of options) {
-        if (option[0] == 'go_pick_up') {
-            let [go_pick_up, x, y, id] = option;
-            let parcel = parcel_db.get(id)
-            if (parcel.reward > highest_value)
-                highest_value = parcel.reward;
-            best_option = option;
-
-        } else if (option[0] == 'go_put_down') {
-            let [go_put_down, x, y, delivery] = option;
-            let current_d = distance({ x, y }, me)
-            if (current_d < nearest) {
-                best_option = option
-                nearest = current_d
-            }
-        }
-    }
-
-
-
-
-    /**
-     * Best option is selected
-     */
-    if (best_option) {
-        // console.log(best_option)
-        if (best_option[0] == "go_pick_up")
-            current_parcel = parcel_db.get(best_option.id)
-        myAgent.push(best_option)
-    }
-
+    
 })
 
 client.onAgentsSensing((agents) => {
@@ -526,6 +508,7 @@ class IntentionRevision {
 
     async loop() {
         while (true) {
+           
             // console.log("Parcel Count:" + me.parcel_count)
             console.log("IQ: " + this.intention_queue.length)
             console.log("ME CARRYING " + me.carrying)
@@ -839,6 +822,7 @@ class GoPickUp extends Plan {
         if (this.stopped) throw ['stopped']; // if stopped then quit
         me.carrying = true
         me.parcel_count++;
+        me_carried_parcels.add(current_parcel.id, [current_parcel]);
         /*  console.log(parcel_db)
          parcel_db.delete(current_parcel.id)
          console.log("----")
@@ -864,16 +848,7 @@ class GoPutDown extends Plan {
         if (this.stopped) throw ['stopped']; // if stopped then quit
         me.carrying = false
         me.parcel_count = 0;
-
-        for (const [key, parcel] of parcel_db.entries()) {
-            console.log("parcel x: " + parcel[0].x + " parcel y: " + parcel[0].y);
-            var current_distance = distance_coordinates(parcel[0].x, parcel[0].y, me.x, me.y)
-            console.log("CURRENT DISTANCE: " + current_distance);
-
-            if (current_distance >= parcel_sensing_distance) {
-                parcel_db.delete(key);
-            }
-        }
+        me_carried_parcels.clear();
 
         return true;
     }
