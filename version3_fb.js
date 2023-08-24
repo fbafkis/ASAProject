@@ -116,9 +116,6 @@ function select_patrolling_points() {
     target_y = Math.floor(map.height / 3) + 1;
     target_x = Math.floor(map.width / 3) + 1;
 
-    console.log("TARGET X: " + target_x)
-    console.log("TARGET Y: " + target_y)
-
     //TODO: If patrolling is specified - check if tile is undefined
 
     patrolling_x_coordinates.set("1", target_x);
@@ -153,15 +150,12 @@ function check_patrolling_point(x, y) {
 // Function that produces the best patrolling option for the current situation. 
 
 function patrolling_case_selection() {
-
     let idle;
-
     //Check Quadrant Counter is in bounds
     if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
         patrolling_area_counter = 1;
     }
 
-    console.log(patrolling_area_counter)
     if (patrolling_area_counter == 1) {
         idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
         patrolling_area_counter++;
