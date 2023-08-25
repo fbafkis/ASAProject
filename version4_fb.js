@@ -287,7 +287,7 @@ function option_choosing_function() {
 
             /// Case 2.2.1 If no parcels are currently carried, go to pickup the parcel with the best reward/distnace ratio. 
 
-            if (me.parcel_count == 0 && parcel_db.size > 0) {
+            if (me.parcel_count == 0 && parcel_db.size != 0) {
                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
             }
 
@@ -295,13 +295,11 @@ function option_choosing_function() {
 
             else if (me.parcel_count == 0 && me.parcel_count == parcel_db.size) {
                 best_option = patrolling_case_selection();
-                // TODO: remove because useless. 
                 patrolling_area_counter++;
                 console.log("OCF - Patrolling moves counter:");
                 console.log(patrolling_moves_counter);
                 console.log("OCF - Patrolling moves treshold:");
                 console.log(patrolling_moves_treshold);
-                //
             }
 
             /// Case 2.2.3 If I am carring some parcels and no new parcels are perceived, go for delivery. 
