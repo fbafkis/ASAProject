@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjQwODBhMDU5MDhhIiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTI4NjgzOTZ9.OcsA1I2HkfX3a3STeoFuU9SwDv2jYzKyFUigXsG1Wpc')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3MDg1ODhjNjY4IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMxNTA2ODd9.XRcKFBcLcf51PvUNv7KjQY0Ayz667Ejg7J6O02QDQl0')
 
 /// Variables and constants.
 
@@ -39,6 +39,7 @@ var game_initialized = false;
 var patrolling_moves_counter = 0;
 // Limit of patrolling moves to execute while I am carrying some parcels before to force the delivery. 
 var patrolling_moves_treshold = 5;
+var last_state_reward_estimation;
 
 /// Functions.
 
@@ -348,8 +349,8 @@ function option_choosing_function() {
                 var agent_total_final_reward_no_pickup = 0;
 
                 for (const [parcel, final_reward] of my_parcels_db_no_pickup.entries()) {
-                    //console.log("OCF - Carried parcels final reward with no pickup:");
-                    //console.log(final_reward);
+                    console.log("OCF - Carried parcels final reward with no pickup:");
+                    console.log(final_reward + me.score);
                     agent_total_final_reward_no_pickup += final_reward;
                 }
 
@@ -358,7 +359,7 @@ function option_choosing_function() {
 
                 /// 2.2.4.3 The loop to estimate for each perceived parcel the final reward in case of picking up 
 
-                for (const [key, p] of parcel_db.entries()) {
+                for (const [pid, p] of parcel_db.entries()) {
 
                     ///  2.2.4.3.1 Find and calulate related distance of the nearest delivery tile for the current analyzed parcel. 
 
@@ -386,20 +387,24 @@ function option_choosing_function() {
 
                         /// 2.2.2.3.3 Calculate the final score for each parcel currently carried by the agent. 
 
+
                         let my_parcels_db_pickup = new Map;
 
-                        for (const [key, p] of parcel_db.entries()) {
-                            if (p.carriedBy == me.id) {
-                                let final_reward = p.reward - Math.round(parcel_total_distance * decading_factor);
+                        for (const [pid, parcel] of parcel_db.entries()) {
+                            if (parcel.carriedBy == me.id) {
+                                let final_reward = parcel.reward - Math.round(parcel_total_distance * decading_factor);
+                                //console.log("OCF - Decading factor: " + decading_factor);
+                                //console.log("OCF - Parcel total distance: " + parcel_total_distance);
+                                //console.log("OCF - Final carried parcel score if pickup: " + (final_reward + me.score));
                                 if (final_reward < 0)
                                     final_reward = 0;
-                                my_parcels_db_pickup.set(p, final_reward);
+                                my_parcels_db_pickup.set(parcel, final_reward);
                             }
                         }
 
                         /// 2.2.4.3.4 Calculate the currently analyzed parcel final reward.
 
-                        let current_parcel_final_reward = p.final_reward - Math.round(parcel_total_distance * decading_factor);
+                        let current_parcel_final_reward = p.reward - Math.round(parcel_total_distance * decading_factor);
 
                         if (current_parcel_final_reward < 0) {
                             current_parcel_final_reward = 0;
@@ -409,9 +414,15 @@ function option_choosing_function() {
 
                         var agent_total_final_reward_pickup = current_parcel_final_reward;
 
+                        console.log("OCF - Agent total final reward if pickup parcel " + p.id + " is " + agent_total_final_reward_pickup);
+
                         for (const [key, final_reward] of my_parcels_db_pickup.entries()) {
                             agent_total_final_reward_pickup += final_reward;
                         }
+
+
+                        console.log("OCF - Agent total final reward if pickup parcel " + p.id + " is " + agent_total_final_reward_pickup + " after sum");
+
 
                         /// 2.2.4.3.6 Comparison between the agent's final reward in the case of picking up the currently analyzed perceived parcel vs. the case of not picking up any parcel. 
                         /// If picking up the parcel grants a gain in terms of reward, the currently analyzed perceived parcel is added to the list of valid parcels. 
@@ -419,6 +430,9 @@ function option_choosing_function() {
                         if (agent_total_final_reward_pickup > agent_total_final_reward_no_pickup) {
                             valid_parcels.set(agent_total_final_reward_pickup, p);
                         }
+
+                        console.log("OCF - The pickup of valid parcel " + p.id + " will provide a final reward of:  " + agent_total_final_reward_pickup);
+
 
                     }  /// End of perceived parcels loop. 
 
@@ -429,7 +443,7 @@ function option_choosing_function() {
                 /// Otherwise the go_pickup option for the parcel that grants the highest reward is selected as the best one. 
 
                 // If there is at least a valid parcel that will probably produce a gain in terms of score, select the one that will probably grant the highest reward. 
-                if (valid_parcels.length > 0) {
+                if (valid_parcels.size > 0) {
                     var best_parcel;
                     var highest_reward = 0;
                     for (const [reward, parcel] of valid_parcels.entries()) {
@@ -480,7 +494,7 @@ function clean_parcel_db() {
     }
     me.parcel_count = my_parcels_counter;
 
-    console.log("PDC - Parcel DB cleaned.")
+    //console.log("PDC - Parcel DB cleaned.")
 }
 
 // Parcel DB management and best option generation on parcel sensing (PDM).
@@ -601,6 +615,10 @@ class IntentionRevision {
     get intention_queue() {
         return this.#intention_queue;
     }
+
+    set intention_queue (new_intention_queue){
+        this.#intention_queue = new_intention_queue;
+    }
     // The main decisional loop. 
     async loop() {
         while (true) {
@@ -652,18 +670,63 @@ class IntentionRevisionQueue extends IntentionRevision {
 
     async push(predicate) {
         // Avoid to push multiple sequential go put down (to avoid put down when empty due to position change and repushing of delivery as best option). 
-        this.intention_queue.forEach(intention => {
-            if ((intention.predicate[0] === 'go_put_down') && (predicate[0] === 'go_put_down')) {
-                console.log("IRQ - Duplicate push of go put down skipped.")
-                return;
-            }
+        /* this.intention_queue.forEach(intention => {
+             if ((intention.predicate[0] === 'go_put_down') && (predicate[0] === 'go_put_down')) {
+                 console.log("IRQ - Duplicate push of go put down skipped.")
+                 return;
+             }
+ 
+         });
+ 
+         */
 
-        });
         // Check if same intention already queued.
-        if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
-            return; // Intention is already queued.
+        /* if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
+             return; // Intention is already queued.
+             */
+
         const intention = new Intention(this, predicate);
-        this.intention_queue.push(intention);
+        
+        if(this.intention_queue.length > 0 ){
+
+            console.log("IRQ - The intention to push or not:")
+
+            console.log(this.intention_queue[0].predicate[0]);
+
+        }
+
+         
+
+        if (this.intention_queue.length == 0) {
+            console.log("IRQ - Case 1");
+
+            this.intention_queue.push(intention);
+        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' || this.intention_queue[0].predicate[0] === 'patrolling') && intention.predicate[0]!= 'go_put_down') {
+
+            console.log("IRQ - Case 2");
+
+            this.intention_queue[0].stop();
+            this.intention_queue.shift();
+            this.intention_queue.push(intention);
+
+        } else if(this.intention_queue.length > 0 && intention.predicate[0]!= 'go_put_down'){
+ 
+            console.log("IRQ - Case 3");
+
+            if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
+             return; // Intention is already queued.
+
+            let new_intention_queue = new Array;
+
+            new_intention_queue.push(intention);
+
+            this.intention_queue.forEach(intention => {
+                new_intention_queue.push(intention);
+            });
+
+            this.intention_queue = new_intention_queue;
+        }
+
     }
 }
 
