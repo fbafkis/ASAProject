@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3MDg1ODhjNjY4IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMxNTA2ODd9.XRcKFBcLcf51PvUNv7KjQY0Ayz667Ejg7J6O02QDQl0')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijg1ODhjNjY4MDM4IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMyMDk5MzZ9.7HAETpezOV1gvytGwTVb6bSP5OKH-90esIYElI_v8hI')
 
 /// Variables and constants.
 
@@ -616,7 +616,7 @@ class IntentionRevision {
         return this.#intention_queue;
     }
 
-    set intention_queue (new_intention_queue){
+    set intention_queue(new_intention_queue) {
         this.#intention_queue = new_intention_queue;
     }
     // The main decisional loop. 
@@ -686,8 +686,8 @@ class IntentionRevisionQueue extends IntentionRevision {
              */
 
         const intention = new Intention(this, predicate);
-        
-        if(this.intention_queue.length > 0 ){
+
+        if (this.intention_queue.length > 0) {
 
             console.log("IRQ - The intention to push or not:")
 
@@ -695,13 +695,12 @@ class IntentionRevisionQueue extends IntentionRevision {
 
         }
 
-         
+
 
         if (this.intention_queue.length == 0) {
             console.log("IRQ - Case 1");
-
             this.intention_queue.push(intention);
-        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' || this.intention_queue[0].predicate[0] === 'patrolling') && intention.predicate[0]!= 'go_put_down') {
+        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' || this.intention_queue[0].predicate[0] === 'patrolling') && intention.predicate[0] != 'go_put_down') {
 
             console.log("IRQ - Case 2");
 
@@ -709,12 +708,12 @@ class IntentionRevisionQueue extends IntentionRevision {
             this.intention_queue.shift();
             this.intention_queue.push(intention);
 
-        } else if(this.intention_queue.length > 0 && intention.predicate[0]!= 'go_put_down'){
- 
+        } else if (this.intention_queue.length > 0 && intention.predicate[0] != 'go_put_down') {
+
             console.log("IRQ - Case 3");
 
             if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
-             return; // Intention is already queued.
+                return; // Intention is already queued.
 
             let new_intention_queue = new Array;
 
@@ -726,7 +725,6 @@ class IntentionRevisionQueue extends IntentionRevision {
 
             this.intention_queue = new_intention_queue;
         }
-
     }
 }
 
