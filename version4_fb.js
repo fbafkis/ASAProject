@@ -350,7 +350,7 @@ function option_choosing_function() {
 
                 for (const [parcel, final_reward] of my_parcels_db_no_pickup.entries()) {
                     console.log("OCF - Carried parcels final reward with no pickup:");
-                    console.log(final_reward + me.score);
+                    console.log(final_reward);
                     agent_total_final_reward_no_pickup += final_reward;
                 }
 
@@ -402,10 +402,13 @@ function option_choosing_function() {
                             }
                         }
 
+                        console.log("Parcel_db");
+                        console.log(parcel_db)
+
                         /// 2.2.4.3.4 Calculate the currently analyzed parcel final reward.
 
                         let current_parcel_final_reward = p.reward - Math.round(parcel_total_distance * decading_factor);
-
+                      
                         if (current_parcel_final_reward < 0) {
                             current_parcel_final_reward = 0;
                         }
@@ -429,6 +432,7 @@ function option_choosing_function() {
 
                         if (agent_total_final_reward_pickup > agent_total_final_reward_no_pickup) {
                             valid_parcels.set(agent_total_final_reward_pickup, p);
+                            console.log("Parcel " + p.id + " is set!");
                         }
 
                         console.log("OCF - The pickup of valid parcel " + p.id + " will provide a final reward of:  " + agent_total_final_reward_pickup);
@@ -687,33 +691,44 @@ class IntentionRevisionQueue extends IntentionRevision {
 
         const intention = new Intention(this, predicate);
 
-        if (this.intention_queue.length > 0) {
+     /*   if (this.intention_queue.length > 0) {
 
             console.log("IRQ - The intention to push or not:")
 
             console.log(this.intention_queue[0].predicate[0]);
 
         }
-
-
+        */
 
         if (this.intention_queue.length == 0) {
             console.log("IRQ - Case 1");
             this.intention_queue.push(intention);
-        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' || this.intention_queue[0].predicate[0] === 'patrolling') && intention.predicate[0] != 'go_put_down') {
+        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' && intention.predicate[0] === 'go_pick_up' )) {
+              console.log("IRQ - Case 2");
 
-            console.log("IRQ - Case 2");
+              if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
+              return; // Intention is already queued.
 
+              this.intention_queue[0].stop();
+              this.intention_queue.unshift(intention);
+
+        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'patrolling' && intention.predicate[0] === 'go_pick_up')) {
+
+            console.log("IRQ - Case 3");
             this.intention_queue[0].stop();
             this.intention_queue.shift();
             this.intention_queue.push(intention);
 
-        } else if (this.intention_queue.length > 0 && intention.predicate[0] != 'go_put_down') {
+        } else if (this.intention_queue.length > 0 && intention.predicate[0] == 'go_pick_up') {
 
-            console.log("IRQ - Case 3");
+            console.log("IRQ - Case 4");
 
             if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
                 return; // Intention is already queued.
+
+            //TODO: Additional Reasoning here if new option should be first in intention queue or old intention should still be executed first!
+            //TODO: Also use unshift function instead of copying Array (Watch Case 2)
+            //TODO: Also check for changing the case -> Maybe add: If (this.intention_queue[0].predicate[0] === 'go_put_down') return -> Case 4 only relevant if there are 2 parcels available for pickup, in case pickup, putdown it does not make sense to use case 4
 
             let new_intention_queue = new Array;
 
@@ -723,6 +738,7 @@ class IntentionRevisionQueue extends IntentionRevision {
                 new_intention_queue.push(intention);
             });
 
+   
             this.intention_queue = new_intention_queue;
         }
     }
@@ -791,7 +807,7 @@ class Intention {
                     // console.log("predicate: " + this.predicate);
                     const plan_res = await this.#current_plan.execute(...this.predicate);
                     // console.log("plan res: " + plan_res);
-                    // this.log('succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res);
+                    this.log('succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res);
                     return plan_res;
                     // or errors are caught so to continue with next plan
                 } catch (error) {
