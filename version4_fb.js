@@ -728,6 +728,7 @@ class IntentionRevisionQueue extends IntentionRevision {
 
             //TODO: Additional Reasoning here if new option should be first in intention queue or old intention should still be executed first!
             //TODO: Also use unshift function instead of copying Array (Watch Case 2)
+            //TODO: Also check for changing the case -> Maybe add: If (this.intention_queue[0].predicate[0] === 'go_put_down') return -> Case 4 only relevant if there are 2 parcels available for pickup, in case pickup, putdown it does not make sense to use case 4
 
             let new_intention_queue = new Array;
 
