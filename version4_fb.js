@@ -148,6 +148,86 @@ function check_patrolling_point(x, y) {
     return valid_tile;
 }
 
+// Function for comparing to intentions and returning the better option
+function ordering_IntentionQueue(latest, old) {
+    
+console.log("Intention Queue:");
+myAgent.intention_queue.forEach(intention => {
+    console.log(intention.predicate);
+});
+
+var new_parcel = parcel_db.get(latest.predicate[3]);  
+var old_parcel = parcel_db.get(old.predicate[3]);
+
+console.log(new_parcel);
+console.log(old_parcel);
+
+try {
+var distance_new_parcel = calculate_distance(new_parcel.x, new_parcel.y, me.x, me.y);
+var distance_old_parcel = calculate_distance(old_parcel.x, old_parcel.y, me.x, me.y);
+
+var total_reward_new_parcel = new_parcel.reward - distance_new_parcel;
+var total_reward_old_parcel = old_parcel.reward - distance_old_parcel;
+
+console.log("OIQ - The Value of newly perceived parcel " + new_parcel.id + " is: " + total_reward_new_parcel); 
+console.log("OIQ - The Value queued perceived parcel " + old_parcel.id + " is: " + total_reward_old_parcel); 
+
+if (total_reward_new_parcel >= (total_reward_old_parcel + 5)) {
+    return new_parcel.id;
+} else {
+    return old_parcel.id;
+}
+} catch (err) {
+console.log("WARNING! EXCEPTION CAUGHT!")
+console.log(err);
+
+let exception = "exception"
+    return exception;
+}
+}
+
+// If Exception is caught -> Function is called for making IQ consistent again
+function intention_revision_reset(){
+
+    console.log("The Exception gets now processed!");
+    console.log("The Agent is carrying " + me.parcel_count + " parcels");
+    console.log("The Current Intentions are: ");
+    myAgent.intention_queue.forEach(intention => {
+        console.log(intention.predicate);
+    });
+
+    if (me.parcel_count == 0) {
+        // Set IQ Length to 0
+        myAgent.intention_queue.length = 0;
+        let recovery_patrolling = patrolling_case_selection();
+        //Pass patrolling Intention to Agent
+        myAgent.push(recovery_patrolling);
+    } else if (me.parcel_count > 0) {
+        // Set IQ Length to 0
+        myAgent.intention_queue.length = 0;
+
+        let recovery_min_del_tile_distance = -1;
+        let recovery_agent_nearest_delivery_tile;
+        delivery_tiles_database.forEach(dt => {
+            let distance = calculate_distance(dt.x, dt.y, me.x, me.y);
+            if (recovery_min_del_tile_distance == -1) {
+                recovery_min_del_tile_distance = distance;
+                recovery_agent_nearest_delivery_tile = dt;
+            } else {
+                if (distance < recovery_min_del_tile_distance) {
+                    recovery_min_del_tile_distance = distance;
+                    recovery_agent_nearest_delivery_tile = dt;
+                }
+            }
+        });
+
+        let recovery_put_down = ['go_put_down', recovery_agent_nearest_delivery_tile.x, recovery_agent_nearest_delivery_tile.y, true];
+
+        //Pass Put Down Intention to Agent
+        myAgent.push(recovery_put_down);
+    }
+ }
+
 // Function that produces the best patrolling option for the current situation. 
 
 function patrolling_case_selection() {
@@ -178,6 +258,7 @@ function patrolling_case_selection() {
 
 function option_choosing_function() {
 
+    //TODO: Parcel slips out of sensing area (Reward 28), in sensing area only 1 parcel (Reward 10) -> Makes probably sense to go to other parcel of long term memory
     /// Variables declaration.
 
     var best_option; //The best option that will be returned as result at the end of the function. 
@@ -209,7 +290,6 @@ function option_choosing_function() {
     //console.log(direct_min_del_tile_distance);
 
     /// 0.2 Calculate the reward/distance ratio for each parcel, finding out the one with the highest. 
-
     let best_ratio_parcel;
     let best_ratio = -1;
     let best_ratio_distance = -1;
@@ -221,7 +301,7 @@ function option_choosing_function() {
                 let distance = calculate_distance(parcel.x, parcel.y, me.x, me.y)
                 let ratio
                 if (distance > 0) {
-                    ratio = Math.round(parcel.reward / distance);
+                    ratio = parcel.reward - distance;
                 } else {
                     ratio = parcel.reward;
                 }
@@ -230,12 +310,14 @@ function option_choosing_function() {
                     best_ratio = ratio;
                     best_ratio_distance = distance;
                 } else {
-                    if (ratio >= best_ratio && distance < best_ratio_distance) {
+                    if (ratio > best_ratio) {
                         best_ratio = ratio;
                         best_ratio_parcel = parcel;
                         best_ratio_distance = distance;
                     }
                 }
+                console.log("Parcel " + pid);
+                console.log("Ratio " + ratio);
             }
         }
     }
@@ -288,6 +370,7 @@ function option_choosing_function() {
 
             /// Case 2.2.1 If no parcels are currently carried, go to pickup the parcel with the best reward/distnace ratio. 
 
+            //TODO: Another Case if no gain from new parcel -> Start Patrolling
             if (me.parcel_count == 0 && parcel_db.size != 0) {
                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
             }
@@ -507,6 +590,9 @@ client.onParcelsSensing(async perceived_parcels => {
 
     clean_parcel_db();
 
+    console.log("FIRE!");
+    console.log("Parcel_DB");
+    console.log(parcel_db);
     // Parcel DB management.
 
     for (const p of perceived_parcels) {
@@ -673,37 +759,16 @@ class IntentionRevision {
 class IntentionRevisionQueue extends IntentionRevision {
 
     async push(predicate) {
-        // Avoid to push multiple sequential go put down (to avoid put down when empty due to position change and repushing of delivery as best option). 
-        /* this.intention_queue.forEach(intention => {
-             if ((intention.predicate[0] === 'go_put_down') && (predicate[0] === 'go_put_down')) {
-                 console.log("IRQ - Duplicate push of go put down skipped.")
-                 return;
-             }
- 
-         });
- 
-         */
-
-        // Check if same intention already queued.
-        /* if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
-             return; // Intention is already queued.
-             */
-
+   
         const intention = new Intention(this, predicate);
 
-     /*   if (this.intention_queue.length > 0) {
-
-            console.log("IRQ - The intention to push or not:")
-
-            console.log(this.intention_queue[0].predicate[0]);
-
-        }
-        */
-
+     // No previous intention in IQ -> push new Intention anyway
         if (this.intention_queue.length == 0) {
             console.log("IRQ - Case 1");
             this.intention_queue.push(intention);
-        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' && intention.predicate[0] === 'go_pick_up' )) {
+        }
+        // Agent wants to deliver carried parcels but senses a benefitial parcel on the way to delivery tile
+         else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' && intention.predicate[0] === 'go_pick_up' )) {
               console.log("IRQ - Case 2");
 
               if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
@@ -712,34 +777,81 @@ class IntentionRevisionQueue extends IntentionRevision {
               this.intention_queue[0].stop();
               this.intention_queue.unshift(intention);
 
-        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'patrolling' && intention.predicate[0] === 'go_pick_up')) {
+        } 
+        // Agent is currently patrolling and senses a new parcel
+            else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'patrolling' && intention.predicate[0] === 'go_pick_up')) {
 
             console.log("IRQ - Case 3");
             this.intention_queue[0].stop();
             this.intention_queue.shift();
             this.intention_queue.push(intention);
 
-        } else if (this.intention_queue.length > 0 && intention.predicate[0] == 'go_pick_up') {
+        }
+        // Agent already is in the process to pick up a parcel and another parcel is sensed
+            else if (this.intention_queue.length > 0 && intention.predicate[0] == 'go_pick_up') {
 
-            console.log("IRQ - Case 4");
+                if (this.intention_queue[0].predicate[0] === 'go_put_down') {
+                console.log("IRQ - Case 4.1 -> IRQ - Case 2 already takes care of Intention Revision");
+                return;
+            }
 
-            if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
+            if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' '))){
+                console.log("IRQ - Case 4.2 -> Intention is already queued");
                 return; // Intention is already queued.
+            }
+                
 
-            //TODO: Additional Reasoning here if new option should be first in intention queue or old intention should still be executed first!
-            //TODO: Also use unshift function instead of copying Array (Watch Case 2)
-            //TODO: Also check for changing the case -> Maybe add: If (this.intention_queue[0].predicate[0] === 'go_put_down') return -> Case 4 only relevant if there are 2 parcels available for pickup, in case pickup, putdown it does not make sense to use case 4
+            // Because Intention Queue is Size 1 the new intention is pushed either way - only the order has to be determined  
+            if (this.intention_queue.length == 1) { 
+            
+            let priority = ordering_IntentionQueue(intention, this.intention_queue[0]);
 
-            let new_intention_queue = new Array;
+            if (priority == "exception") {
+                console.log("ERROR CAUGHT! IQ Size 1")
+                intention_revision_reset();
+            }
+            else if (priority == intention.predicate[3]) {
+              console.log("IRQ - Case 4.3.1 -> IQ Size 1 - Reordering is needed");
+              this.intention_queue[0].stop();
+              this.intention_queue.unshift(intention);
+            } else {
+              console.log("IRQ - Case 4.3.2 -> IQ Size 1 - No new order is needed!");
+              this.intention_queue.push(intention);  
+            } 
+           }
+           // Since Intention Queue has Size 2 it has to be checked if new parcel is pushed and in which place it will be pushed
+           else if (this.intention_queue.length == 2) {
+                
+            let priority_1 = ordering_IntentionQueue(intention, this.intention_queue[0]);
 
-            new_intention_queue.push(intention);
+            if (priority_1 == "exception") {
+                console.log("ERROR CAUGHT! IQ Size 2 - Prio 1")
+                intention_revision_reset();
+            }
+            else if (priority_1 == intention.predicate[3]) {
+                console.log("IRQ - Case 4.4.1 -> IQ Size 2 - New Intention is BEST Intention");
+                this.intention_queue[0].stop();
+                this.intention_queue.unshift(intention);
+                this.intention_queue.pop();
+              } else {
+                console.log("IRQ - Case 4.4.2 -> IQ Size 2 - New Intention is NOT Best Intention");
+                
+                let priority_2 = ordering_IntentionQueue(intention, this.intention_queue[1]);
 
-            this.intention_queue.forEach(intention => {
-                new_intention_queue.push(intention);
-            });
-
-   
-            this.intention_queue = new_intention_queue;
+                if (priority_2 == "exception") {
+                    console.log("ERROR CAUGHT!  IQ Size 2 - Prio 2")
+                    intention_revision_reset();
+                } else if (priority_2 == intention.predicate[3]) {
+                    console.log("IRQ - Case 4.5.1 -> IQ Size 2 - New Intention is SECOND best Intention");
+                    this.intention_queue.pop();
+                    this.intention_queue.push(intention);
+                  } else {
+                    console.log("WARNING: IRQ - Case 4.5.2 -> IQ Size 2 - New Intention is WORST! New Intention gets deleted");
+                  }
+              } 
+            } else {
+                console.log("ALERT! ALERT! IQ OUT OF SCOPE! Intention Queue Size: " + this.intention_queue.length);
+            }
         }
     }
 }
