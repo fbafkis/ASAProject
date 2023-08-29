@@ -77,6 +77,7 @@ client.onConfig((config) => {
         case '5s': ltpdb_update_interval = 5000;
             break;
         case '10s': ltpdb_update_interval = 10000;
+            break;
         default: ltpdb_update_interval = 1000;
             break;
     }
@@ -168,6 +169,7 @@ function check_patrolling_point(x, y) {
 
 function patrolling_case_selection() {
     let idle;
+
     //Check Quadrant Counter is in bounds
     if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
         patrolling_area_counter = 1;
@@ -188,6 +190,51 @@ function patrolling_case_selection() {
     }
 
     return idle;
+}
+
+// Function to set the agent going to the (eventually present)best parcel into the long term parcel DB (GTMP). 
+
+function go_to_memorized_parcel() {
+
+    let highest_ratio = null;
+    let best_parcel;
+
+    for (const [pid, parcel] of long_term_parcel_db) {
+
+        var direct_min_del_tile_distance = -1;
+        var parcel_nearest_delivery_tile;
+        delivery_tiles_database.forEach(dt => {
+            let distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
+            if (direct_min_del_tile_distance == -1) {
+                direct_min_del_tile_distance = distance;
+                parcel_nearest_delivery_tile = dt;
+            } else {
+                if (distance < direct_min_del_tile_distance) {
+                    direct_min_del_tile_distance = distance;
+                    parcel_nearest_delivery_tile = dt;
+                }
+            }
+        });
+
+
+        let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
+        let parcel_ratio = parcel.reward - total_distance;
+
+        if (highest_ratio == null) {
+            highest_ratio = parcel_ratio;
+            best_parcel = parcel;
+        } else {
+            if (parcel_ratio > highest_ratio)
+                highest_ratio = parcel_ratio;
+            best_parcel = parcel;
+        }
+
+    }
+
+    var option = ['patrolling', best_parcel.x, best_parcel.y];
+
+    return option;
+
 }
 
 // Option Choosing Function (OCF). The core function that provides always the best option for the current situation. 
@@ -284,12 +331,17 @@ function option_choosing_function() {
                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
             } else if (me.parcel_count == parcel_db.size) {
                 // If the perceived parcels are only those that I am carrying, go for patrolling. 
-                best_option = patrolling_case_selection();
-                patrolling_moves_counter++;
-                console.log("OCF - Patrolling moves counter:");
-                console.log(patrolling_moves_counter);
-                console.log("OCF - Patrolling moves treshold:");
-                console.log(patrolling_moves_treshold);
+                if (long_term_parcel_db.size == 0) { // If no parcels inside the long term parcel DB
+                    best_option = patrolling_case_selection();
+                    patrolling_moves_counter++;
+                    console.log("OCF - Patrolling moves counter:");
+                    console.log(patrolling_moves_counter);
+                    console.log("OCF - Patrolling moves treshold:");
+                    console.log(patrolling_moves_treshold);
+                } else { // If there is at least one parcel inside the long term parcel DB, exploit it. 
+                    best_option = go_to_memorized_parcel();
+                    console.log("OCF - Exploiting long term parcel DB to optimize patrolling.");
+                }
                 // If only patrolling options are pushed for a while (when max parcels are almost reached) go to delivery, without losing time going around.  
             } else if (me.parcel_count > 0 && patrolling_moves_counter >= patrolling_moves_treshold) {
                 best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
@@ -311,12 +363,17 @@ function option_choosing_function() {
             /// Case 2.2.2 If no parcels are carried and no parcels are perceived, start patrolling.     
 
             else if (me.parcel_count == 0 && me.parcel_count == parcel_db.size) {
-                best_option = patrolling_case_selection();
-                patrolling_area_counter++;
-                console.log("OCF - Patrolling moves counter:");
-                console.log(patrolling_moves_counter);
-                console.log("OCF - Patrolling moves treshold:");
-                console.log(patrolling_moves_treshold);
+                if (long_term_parcel_db.size == 0) { // If no parcels inside the long term parcel DB
+                    best_option = patrolling_case_selection();
+                    patrolling_area_counter++;
+                    console.log("OCF - Patrolling moves counter:");
+                    console.log(patrolling_moves_counter);
+                    console.log("OCF - Patrolling moves treshold:");
+                    console.log(patrolling_moves_treshold);
+                } else { // If there is at least one parcel inside the long term parcel DB, exploit it. 
+                    best_option = go_to_memorized_parcel();
+                    console.log("OCF - Exploiting long term parcel DB to optimize patrolling.");
+                }
             }
 
             /// Case 2.2.3 If I am carring some parcels and no new parcels are perceived, go for delivery. 
@@ -522,25 +579,18 @@ client.onParcelsSensing(async perceived_parcels => {
     // Parcel DB management.
 
     for (const p of perceived_parcels) {
-        if (!parcel_db.has(p.id)) {  // If the parcel is not already in database.
-            if (p.carriedBy == null || p.carriedBy == me.id) {  // If the parcel has not already picked up by somebody else. If picked up by me, update parcel's information. 
-                p.x = Math.round(p.x);
-                p.y = Math.round(p.y);
-                parcel_db.set(p.id, p); // Save the parcel into the databse. 
-            }
+        if (p.carriedBy == me.id) { // If currently carried by me, update parcel's information. 
+            p.x = Math.round(p.x);
+            p.y = Math.round(p.y);
+            parcel_db.set(p.id, p); // Update the parcel into the databse. 
         } else if (p.carriedBy == null) { // If the parcel is not carried by anybody.
             p.x = Math.round(p.x);
             p.y = Math.round(p.y);
             long_term_parcel_db.set(p.id, p); // Save the parcel into the long term database.
-        } else {
-            p.x = Math.round(p.x);
-            p.y = Math.round(p.y);
             parcel_db.set(p.id, p); // Save the parcel into the database.
         }
     }
-
     clean_ltpdb();
-
 
     // Best option generation.
 
@@ -556,14 +606,11 @@ client.onParcelsSensing(async perceived_parcels => {
     }
 });
 
-
-//function long_term_parcel_db_managemnent(){
+// Long term parcel DB content update function. 
 
 function update_ltpdb() {
 
-
-
-// For each parcel in the long term parcel DB. 
+    // For each parcel in the long term parcel DB. 
     for (const [pid, parcel] of long_term_parcel_db) {
         parcel.reward--; // Decrease the value automatically also if I currently don't see the parcel (ths function is called periodically, basing on decading nterval value).
         if (parcel.reward == 0) { // If a parcel that I can't see reaches reward 0, remove it. 
@@ -578,18 +625,17 @@ function update_ltpdb() {
     }
 
     console.log("ULTPDB - Long term parcel DB:");
-    for(const [pid, parcel] of long_term_parcel_db){
+    for (const [pid, parcel] of long_term_parcel_db) {
         console.log(parcel);
     }
 }
 
+// Long term parcel DB content clean parcel function. 
 
 function clean_ltpdb() {
 
     for (const [pid, parcel] of long_term_parcel_db) {
-
         let pdb_parcel = parcel_db.get(pid);
-
         if (pdb_parcel) {
             if (pdb_parcel.carriedBy != null) {
                 long_term_parcel_db.delete(pid);
@@ -597,10 +643,8 @@ function clean_ltpdb() {
                 long_term_parcel_db.set(pid, pdb_parcel);
             }
         }
-
         if ((calculate_distance(parcel.x, parcel.y, me.x, me.y) <= parcel_sensing_distance) && !pdb_parcel) {
             long_term_parcel_db.delete(pid);
-
         }
     }
 }
@@ -610,70 +654,70 @@ function clean_ltpdb() {
 
 /*
 client.onAgentsSensing((agents) => {
-
+ 
     for (const a of agents) {
-
+ 
         if (a.x % 1 != 0 || a.y % 1 != 0) // skip intermediate values (0.6 or 0.4)
             continue;
-
+ 
         // I meet someone for the first time
         if (!agent_db.has(a.id)) {
-
+ 
             agent_db.set(a.id, [a])
-
+ 
         } else { // I remember him
-
+ 
             // this is everything I know about him
             const history = agent_db.get(a.id)
-
+ 
             // this is about the last time I saw him
             const last = history[history.length - 1]
             const second_last = (history.length > 2 ? history[history.length - 2] : 'no knowledge')
-
+ 
             if (last != 'lost') { // I was seeing him also last time
-
+ 
                 if (last.x != a.x || last.y != a.y) { // But he moved
-
+ 
                     history.push(a)
-
+ 
                 }
-
+ 
             } else { // I see him again after some time
-
+ 
                 history.push(a)
-
+ 
                 if (second_last.x != a.x || second_last.y != a.y) {
                   //  console.log('Welcome back, seems that you moved', a.name, "; Your Score is: ", a.score)
                 } else {
                    // console.log('Welcome back, seems you are still here as before', a.name, "; Your Score is: ", a.score)
                 }
-
+ 
             }
-
+ 
         }
-
+ 
     }
-
+ 
     for (const [id, history] of agent_db.entries()) {
-
+ 
         const last = history[history.length - 1]
         const second_last = (history.length > 1 ? history[history.length - 2] : 'no knowledge')
-
+ 
         if (!agents.map(a => a.id).includes(id)) {
             // If I am not seeing him anymore
-
+ 
             if (last != 'lost') {
                 // Just went off
-
+ 
                 history.push('lost');
                 console.log('Bye', last.name);
-
+ 
             }
-
+ 
         }
-
+ 
     }
-
+ 
 })*/
 
 /// The core classes.
@@ -696,13 +740,13 @@ class IntentionRevision {
     async loop() {
         while (true) {
             if (game_initialized) { // Check if the game has been initialized. 
-
-                if(interval_trigger){
-                    console.log("IRL - Long term DB update interval: " + ltpdb_update_interval + " ms.");
-                    setInterval(update_ltpdb, ltpdb_update_interval);
-                    interval_trigger = false;
+                if (parcel_decading_interval != "infinite") {
+                    if (interval_trigger) {
+                        console.log("IRL - Long term DB update interval: " + ltpdb_update_interval + " ms.");
+                        setInterval(update_ltpdb, ltpdb_update_interval);
+                        interval_trigger = false;
+                    }
                 }
-
                 if (this.intention_queue.length == 0) {  // If all the intentions has been consumed. 
                     myAgent.push(option_choosing_function()); // Produce the next best option. 
                 } else {
