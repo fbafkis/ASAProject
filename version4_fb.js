@@ -316,12 +316,13 @@ function option_choosing_function() {
                         best_ratio_distance = distance;
                     }
                 }
-                console.log("Parcel " + pid);
-                console.log("Ratio " + ratio);
+               
             }
         }
+         console.log("OCF - Parcel " + best_ratio_parcel.id + " has the best ratio with the value: " + best_ratio_parcel);
     }
 
+    
     //console.log("OCF - Best reward/distance ratio parcel:");
     //console.log(best_ratio_parcel);
     //console.log("OCF - Best reward/distance ratio:");
@@ -370,9 +371,17 @@ function option_choosing_function() {
 
             /// Case 2.2.1 If no parcels are currently carried, go to pickup the parcel with the best reward/distnace ratio. 
 
-            //TODO: Another Case if no gain from new parcel -> Start Patrolling
+            
             if (me.parcel_count == 0 && parcel_db.size != 0) {
+
+                if (best_ratio > 0) {
                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
+            } else {
+            //TODO: Check Long Term memory to determine which patrolling
+                best_option = patrolling_case_selection();
+                patrolling_moves_counter++;
+            }
+
             }
 
             /// Case 2.2.2 If no parcels are carried and no parcels are perceived, start patrolling.     
@@ -385,7 +394,7 @@ function option_choosing_function() {
                 console.log("OCF - Patrolling moves treshold:");
                 console.log(patrolling_moves_treshold);
             }
-
+            
             /// Case 2.2.3 If I am carring some parcels and no new parcels are perceived, go for delivery. 
 
             else if (me.parcel_count != 0 && me.parcel_count == parcel_db.size) {
