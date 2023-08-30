@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImM2NjgwMzgxYzBlIiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMyMzY4Njl9.r9xDAxQ9f_NCxk1CSjNiO-bQLMrmeVbo1dxoKZBFAXo')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjJjMmJmZWUzZjY1IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMzOTA2MjJ9.bq04GRQjgkQqhsB_PZJjj054QDRiGFfZkyMOCE1QBLA')
 
 /// Variables and constants.
 
@@ -218,7 +218,7 @@ function go_to_memorized_parcel() {
 
 
         let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
-        let parcel_ratio = parcel.reward - total_distance;
+        let parcel_ratio = parcel.reward - total_distance; // TODO: add decading factor multiplying. 
 
         if (highest_ratio == null) {
             highest_ratio = parcel_ratio;
@@ -228,13 +228,12 @@ function go_to_memorized_parcel() {
                 highest_ratio = parcel_ratio;
             best_parcel = parcel;
         }
-
     }
+    console.log("GTMP - The best parcel to try to pickup from the long term parcel DB is: ");
+    console.log(best_parcel);
 
     var option = ['patrolling', best_parcel.x, best_parcel.y];
-
     return option;
-
 }
 
 // Option Choosing Function (OCF). The core function that provides always the best option for the current situation. 
@@ -639,12 +638,19 @@ function clean_ltpdb() {
         if (pdb_parcel) {
             if (pdb_parcel.carriedBy != null) {
                 long_term_parcel_db.delete(pid);
+                console.log("CLTPDB - Removed parcel " + parcel + " because now it is carried by someone.");
             } else {
                 long_term_parcel_db.set(pid, pdb_parcel);
+                console.log("CLTPDB - Updated parcel " + parcel);
             }
-        }
-        if ((calculate_distance(parcel.x, parcel.y, me.x, me.y) <= parcel_sensing_distance) && !pdb_parcel) {
-            long_term_parcel_db.delete(pid);
+        } else { 
+            let distance_me_parcel = calculate_distance(parcel.x, parcel.y, me.x, me.y);
+            if (distance_me_parcel < parcel_sensing_distance) {
+                long_term_parcel_db.delete(pid);
+                console.log("CLTPDB - Removed parcel " + pid + " because it should be here but it's not anymore.");
+                console.log("CLTPDB - distance me/parcel: " + distance_me_parcel);
+                console.log("CLTPDB - distance sensing: " + parcel_sensing_distance);
+            }
         }
     }
 }
