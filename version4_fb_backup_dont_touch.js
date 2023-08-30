@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjJjMmJmZWUzZjY1IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMzOTA2MjJ9.bq04GRQjgkQqhsB_PZJjj054QDRiGFfZkyMOCE1QBLA')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijg1ODhjNjY4MDM4IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMyMDk5MzZ9.7HAETpezOV1gvytGwTVb6bSP5OKH-90esIYElI_v8hI')
 
 /// Variables and constants.
 
@@ -39,11 +39,7 @@ var game_initialized = false;
 var patrolling_moves_counter = 0;
 // Limit of patrolling moves to execute while I am carrying some parcels before to force the delivery. 
 var patrolling_moves_treshold = 5;
-
-var long_term_parcel_db = new Map;
-var ltpdb_update_interval;
-var interval_trigger = true;
-
+var last_state_reward_estimation;
 
 /// Functions.
 
@@ -68,19 +64,6 @@ client.onConfig((config) => {
     parcel_decading_interval = config.PARCEL_DECADING_INTERVAL;
     parcel_sensing_distance = config.PARCELS_OBSERVATION_DISTANCE;
     max_parcels = config.PARCELS_MAX;
-    // Initializing the long term parcel DB refreshing interval basing on the value of the decading interval. 
-    switch (parcel_decading_interval) {
-        case '1s': ltpdb_update_interval = 1000;
-            break;
-        case '2s': ltpdb_update_interval = 2000;
-            break;
-        case '5s': ltpdb_update_interval = 5000;
-            break;
-        case '10s': ltpdb_update_interval = 10000;
-            break;
-        default: ltpdb_update_interval = 1000;
-            break;
-    }
     game_initialized = true;
 });
 
@@ -169,7 +152,6 @@ function check_patrolling_point(x, y) {
 
 function patrolling_case_selection() {
     let idle;
-
     //Check Quadrant Counter is in bounds
     if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
         patrolling_area_counter = 1;
@@ -190,50 +172,6 @@ function patrolling_case_selection() {
     }
 
     return idle;
-}
-
-// Function to set the agent going to the (eventually present)best parcel into the long term parcel DB (GTMP). 
-
-function go_to_memorized_parcel() {
-
-    let highest_ratio = null;
-    let best_parcel;
-
-    for (const [pid, parcel] of long_term_parcel_db) {
-
-        var direct_min_del_tile_distance = -1;
-        var parcel_nearest_delivery_tile;
-        delivery_tiles_database.forEach(dt => {
-            let distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
-            if (direct_min_del_tile_distance == -1) {
-                direct_min_del_tile_distance = distance;
-                parcel_nearest_delivery_tile = dt;
-            } else {
-                if (distance < direct_min_del_tile_distance) {
-                    direct_min_del_tile_distance = distance;
-                    parcel_nearest_delivery_tile = dt;
-                }
-            }
-        });
-
-
-        let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
-        let parcel_ratio = parcel.reward - total_distance; // TODO: add decading factor multiplying. 
-
-        if (highest_ratio == null) {
-            highest_ratio = parcel_ratio;
-            best_parcel = parcel;
-        } else {
-            if (parcel_ratio > highest_ratio)
-                highest_ratio = parcel_ratio;
-            best_parcel = parcel;
-        }
-    }
-    console.log("GTMP - The best parcel to try to pickup from the long term parcel DB is: ");
-    console.log(best_parcel);
-
-    var option = ['patrolling', best_parcel.x, best_parcel.y];
-    return option;
 }
 
 // Option Choosing Function (OCF). The core function that provides always the best option for the current situation. 
@@ -330,17 +268,12 @@ function option_choosing_function() {
                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
             } else if (me.parcel_count == parcel_db.size) {
                 // If the perceived parcels are only those that I am carrying, go for patrolling. 
-                if (long_term_parcel_db.size == 0) { // If no parcels inside the long term parcel DB
-                    best_option = patrolling_case_selection();
-                    patrolling_moves_counter++;
-                    console.log("OCF - Patrolling moves counter:");
-                    console.log(patrolling_moves_counter);
-                    console.log("OCF - Patrolling moves treshold:");
-                    console.log(patrolling_moves_treshold);
-                } else { // If there is at least one parcel inside the long term parcel DB, exploit it. 
-                    best_option = go_to_memorized_parcel();
-                    console.log("OCF - Exploiting long term parcel DB to optimize patrolling.");
-                }
+                best_option = patrolling_case_selection();
+                patrolling_moves_counter++;
+                console.log("OCF - Patrolling moves counter:");
+                console.log(patrolling_moves_counter);
+                console.log("OCF - Patrolling moves treshold:");
+                console.log(patrolling_moves_treshold);
                 // If only patrolling options are pushed for a while (when max parcels are almost reached) go to delivery, without losing time going around.  
             } else if (me.parcel_count > 0 && patrolling_moves_counter >= patrolling_moves_treshold) {
                 best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
@@ -362,17 +295,12 @@ function option_choosing_function() {
             /// Case 2.2.2 If no parcels are carried and no parcels are perceived, start patrolling.     
 
             else if (me.parcel_count == 0 && me.parcel_count == parcel_db.size) {
-                if (long_term_parcel_db.size == 0) { // If no parcels inside the long term parcel DB
-                    best_option = patrolling_case_selection();
-                    patrolling_area_counter++;
-                    console.log("OCF - Patrolling moves counter:");
-                    console.log(patrolling_moves_counter);
-                    console.log("OCF - Patrolling moves treshold:");
-                    console.log(patrolling_moves_treshold);
-                } else { // If there is at least one parcel inside the long term parcel DB, exploit it. 
-                    best_option = go_to_memorized_parcel();
-                    console.log("OCF - Exploiting long term parcel DB to optimize patrolling.");
-                }
+                best_option = patrolling_case_selection();
+                patrolling_area_counter++;
+                console.log("OCF - Patrolling moves counter:");
+                console.log(patrolling_moves_counter);
+                console.log("OCF - Patrolling moves treshold:");
+                console.log(patrolling_moves_treshold);
             }
 
             /// Case 2.2.3 If I am carring some parcels and no new parcels are perceived, go for delivery. 
@@ -422,7 +350,7 @@ function option_choosing_function() {
 
                 for (const [parcel, final_reward] of my_parcels_db_no_pickup.entries()) {
                     console.log("OCF - Carried parcels final reward with no pickup:");
-                    console.log(final_reward + me.score);
+                    console.log(final_reward);
                     agent_total_final_reward_no_pickup += final_reward;
                 }
 
@@ -474,10 +402,13 @@ function option_choosing_function() {
                             }
                         }
 
+                        console.log("Parcel_db");
+                        console.log(parcel_db)
+
                         /// 2.2.4.3.4 Calculate the currently analyzed parcel final reward.
 
                         let current_parcel_final_reward = p.reward - Math.round(parcel_total_distance * decading_factor);
-
+                      
                         if (current_parcel_final_reward < 0) {
                             current_parcel_final_reward = 0;
                         }
@@ -501,6 +432,7 @@ function option_choosing_function() {
 
                         if (agent_total_final_reward_pickup > agent_total_final_reward_no_pickup) {
                             valid_parcels.set(agent_total_final_reward_pickup, p);
+                            console.log("Parcel " + p.id + " is set!");
                         }
 
                         console.log("OCF - The pickup of valid parcel " + p.id + " will provide a final reward of:  " + agent_total_final_reward_pickup);
@@ -578,18 +510,18 @@ client.onParcelsSensing(async perceived_parcels => {
     // Parcel DB management.
 
     for (const p of perceived_parcels) {
-        if (p.carriedBy == me.id) { // If currently carried by me, update parcel's information. 
+        if (!parcel_db.has(p.id)) {  // If the parcel is not already in database.
+            if (p.carriedBy == null || p.carriedBy == me.id) {  // If the parcel has not already picked up by somebody else. If picked up by me, update parcel's information. 
+                p.x = Math.round(p.x);
+                p.y = Math.round(p.y);
+                parcel_db.set(p.id, p); // Save the parcel into the databse. 
+            }
+        } else {
             p.x = Math.round(p.x);
             p.y = Math.round(p.y);
-            parcel_db.set(p.id, p); // Update the parcel into the databse. 
-        } else if (p.carriedBy == null) { // If the parcel is not carried by anybody.
-            p.x = Math.round(p.x);
-            p.y = Math.round(p.y);
-            long_term_parcel_db.set(p.id, p); // Save the parcel into the long term database.
-            parcel_db.set(p.id, p); // Save the parcel into the database.
+            parcel_db.set(p.id, p); // Save the parcel into the databse.
         }
     }
-    clean_ltpdb();
 
     // Best option generation.
 
@@ -605,125 +537,74 @@ client.onParcelsSensing(async perceived_parcels => {
     }
 });
 
-// Long term parcel DB content update function. 
-
-function update_ltpdb() {
-
-    // For each parcel in the long term parcel DB. 
-    for (const [pid, parcel] of long_term_parcel_db) {
-        parcel.reward--; // Decrease the value automatically also if I currently don't see the parcel (ths function is called periodically, basing on decading nterval value).
-        if (parcel.reward == 0) { // If a parcel that I can't see reaches reward 0, remove it. 
-            long_term_parcel_db.delete(pid);
-        }
-    }
-    console.log("ULTPDB - Parcels rewards updated.");
-    if (long_term_parcel_db.size == 0) {
-        console.log("ULTPDB - Long term parcel DB is empty.");
-    } else {
-        console.log("ULTPDB - Long term parcel DB size: " + long_term_parcel_db.size);
-    }
-
-    console.log("ULTPDB - Long term parcel DB:");
-    for (const [pid, parcel] of long_term_parcel_db) {
-        console.log(parcel);
-    }
-}
-
-// Long term parcel DB content clean parcel function. 
-
-function clean_ltpdb() {
-
-    for (const [pid, parcel] of long_term_parcel_db) {
-        let pdb_parcel = parcel_db.get(pid);
-        if (pdb_parcel) {
-            if (pdb_parcel.carriedBy != null) {
-                long_term_parcel_db.delete(pid);
-                console.log("CLTPDB - Removed parcel " + parcel + " because now it is carried by someone.");
-            } else {
-                long_term_parcel_db.set(pid, pdb_parcel);
-                console.log("CLTPDB - Updated parcel " + parcel);
-            }
-        } else { 
-            let distance_me_parcel = calculate_distance(parcel.x, parcel.y, me.x, me.y);
-            if (distance_me_parcel < parcel_sensing_distance) {
-                long_term_parcel_db.delete(pid);
-                console.log("CLTPDB - Removed parcel " + pid + " because it should be here but it's not anymore.");
-                console.log("CLTPDB - distance me/parcel: " + distance_me_parcel);
-                console.log("CLTPDB - distance sensing: " + parcel_sensing_distance);
-            }
-        }
-    }
-}
-
-
 // Agent sensing management (not used in this version).
 
 /*
 client.onAgentsSensing((agents) => {
- 
+
     for (const a of agents) {
- 
+
         if (a.x % 1 != 0 || a.y % 1 != 0) // skip intermediate values (0.6 or 0.4)
             continue;
- 
+
         // I meet someone for the first time
         if (!agent_db.has(a.id)) {
- 
+
             agent_db.set(a.id, [a])
- 
+
         } else { // I remember him
- 
+
             // this is everything I know about him
             const history = agent_db.get(a.id)
- 
+
             // this is about the last time I saw him
             const last = history[history.length - 1]
             const second_last = (history.length > 2 ? history[history.length - 2] : 'no knowledge')
- 
+
             if (last != 'lost') { // I was seeing him also last time
- 
+
                 if (last.x != a.x || last.y != a.y) { // But he moved
- 
+
                     history.push(a)
- 
+
                 }
- 
+
             } else { // I see him again after some time
- 
+
                 history.push(a)
- 
+
                 if (second_last.x != a.x || second_last.y != a.y) {
                   //  console.log('Welcome back, seems that you moved', a.name, "; Your Score is: ", a.score)
                 } else {
                    // console.log('Welcome back, seems you are still here as before', a.name, "; Your Score is: ", a.score)
                 }
- 
+
             }
- 
+
         }
- 
+
     }
- 
+
     for (const [id, history] of agent_db.entries()) {
- 
+
         const last = history[history.length - 1]
         const second_last = (history.length > 1 ? history[history.length - 2] : 'no knowledge')
- 
+
         if (!agents.map(a => a.id).includes(id)) {
             // If I am not seeing him anymore
- 
+
             if (last != 'lost') {
                 // Just went off
- 
+
                 history.push('lost');
                 console.log('Bye', last.name);
- 
+
             }
- 
+
         }
- 
+
     }
- 
+
 })*/
 
 /// The core classes.
@@ -746,13 +627,6 @@ class IntentionRevision {
     async loop() {
         while (true) {
             if (game_initialized) { // Check if the game has been initialized. 
-                if (parcel_decading_interval != "infinite") {
-                    if (interval_trigger) {
-                        console.log("IRL - Long term DB update interval: " + ltpdb_update_interval + " ms.");
-                        setInterval(update_ltpdb, ltpdb_update_interval);
-                        interval_trigger = false;
-                    }
-                }
                 if (this.intention_queue.length == 0) {  // If all the intentions has been consumed. 
                     myAgent.push(option_choosing_function()); // Produce the next best option. 
                 } else {
@@ -817,33 +691,44 @@ class IntentionRevisionQueue extends IntentionRevision {
 
         const intention = new Intention(this, predicate);
 
-        if (this.intention_queue.length > 0) {
+     /*   if (this.intention_queue.length > 0) {
 
             console.log("IRQ - The intention to push or not:")
 
             console.log(this.intention_queue[0].predicate[0]);
 
         }
-
-
+        */
 
         if (this.intention_queue.length == 0) {
             console.log("IRQ - Case 1");
             this.intention_queue.push(intention);
-        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' || this.intention_queue[0].predicate[0] === 'patrolling') && intention.predicate[0] != 'go_put_down') {
+        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' && intention.predicate[0] === 'go_pick_up' )) {
+              console.log("IRQ - Case 2");
 
-            console.log("IRQ - Case 2");
+              if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
+              return; // Intention is already queued.
 
+              this.intention_queue[0].stop();
+              this.intention_queue.unshift(intention);
+
+        } else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'patrolling' && intention.predicate[0] === 'go_pick_up')) {
+
+            console.log("IRQ - Case 3");
             this.intention_queue[0].stop();
             this.intention_queue.shift();
             this.intention_queue.push(intention);
 
-        } else if (this.intention_queue.length > 0 && intention.predicate[0] != 'go_put_down') {
+        } else if (this.intention_queue.length > 0 && intention.predicate[0] == 'go_pick_up') {
 
-            console.log("IRQ - Case 3");
+            console.log("IRQ - Case 4");
 
             if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
                 return; // Intention is already queued.
+
+            //TODO: Additional Reasoning here if new option should be first in intention queue or old intention should still be executed first!
+            //TODO: Also use unshift function instead of copying Array (Watch Case 2)
+            //TODO: Also check for changing the case -> Maybe add: If (this.intention_queue[0].predicate[0] === 'go_put_down') return -> Case 4 only relevant if there are 2 parcels available for pickup, in case pickup, putdown it does not make sense to use case 4
 
             let new_intention_queue = new Array;
 
@@ -853,6 +738,7 @@ class IntentionRevisionQueue extends IntentionRevision {
                 new_intention_queue.push(intention);
             });
 
+   
             this.intention_queue = new_intention_queue;
         }
     }
@@ -921,7 +807,7 @@ class Intention {
                     // console.log("predicate: " + this.predicate);
                     const plan_res = await this.#current_plan.execute(...this.predicate);
                     // console.log("plan res: " + plan_res);
-                    // this.log('succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res);
+                    this.log('succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res);
                     return plan_res;
                     // or errors are caught so to continue with next plan
                 } catch (error) {
@@ -990,10 +876,7 @@ class GoPickUp extends Plan {
         if (this.stopped) throw ['stopped']; // if stopped then quit
         await client.pickup()
         if (this.stopped) throw ['stopped']; // if stopped then quit
-
         clean_parcel_db();
-        clean_ltpdb();
-
         return true;
     }
 }
@@ -1016,7 +899,6 @@ class GoPutDown extends Plan {
         await client.putdown()
         if (this.stopped) throw ['stopped']; // if stopped then quit
         clean_parcel_db();
-        clean_ltpdb();
         return true;
     }
 }
@@ -1090,7 +972,7 @@ class BlindMove extends Plan {
         }
 
         clean_parcel_db();
-        clean_ltpdb();
+
         return true;
 
     }
