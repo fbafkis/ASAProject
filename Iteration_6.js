@@ -69,6 +69,10 @@ var fourth_quadrant_tiles = [];
 
 var last_patrolling_point = [];
 
+var patrolling_distance_between_points = 5;
+
+var patrolling_init = false;
+
 /// Functions.
 
 //Function to calculate the distance using coordinates.
@@ -197,9 +201,7 @@ client.onConfig((config) => {
 // Retrieving the information about the map. 
 client.onMap((width, height, tiles) => {
     map.width = width;
-    console.log("WIDTH: " + map.width);
     map.height = height;
-    console.log("HEIGHT: " + map.height);
     for (const t of tiles) {
         map.add(t);
         // Add delivery tiles to delivery tiles DB.
@@ -207,7 +209,6 @@ client.onMap((width, height, tiles) => {
             delivery_tiles_database.push(t);
         }
     }
-    console.log(map.tiles);
     // Preparing the patrolling strategy. 
     select_patrolling_points();
     map_initialized = true;
@@ -463,13 +464,35 @@ function patrolling_case_selection() {
           //TODO: Implement default case - just not defined for testing
       }
 
+      if (patrolling_init == false) {
+      random_index = Math.floor(Math.random() * active_sector.length);
+      selected_tile = active_sector[random_index];
+      console.log("PCS - Initial Tile selected - x: " + selected_tile.x + " + y: " + selected_tile.y + " !");
+      idle_option = ['patrolling', selected_tile.x, selected_tile.y];
+      last_patrolling_point = selected_tile;
+      patrolling_init = true;
+      } else {
+      while (true) {
+
       random_index = Math.floor(Math.random() * active_sector.length);
       selected_tile = active_sector[random_index];
       patrolling_point_distance = calculate_distance(last_patrolling_point.x, last_patrolling_point.y, selected_tile.x, selected_tile.y);
+      console.log("PCS - Tile x: " + selected_tile.x + " + y: " + selected_tile.y + " with distance: " + patrolling_point_distance + " is selected!");
 
+      if (patrolling_point_distance > patrolling_distance_between_points) {
+         idle_option = ['patrolling', selected_tile.x, selected_tile.y];
+         last_patrolling_point = selected_tile;
+         break;
+      }
+    }       
+    }
+    patrolling_area_counter++;
+    console.log("Patrolling intention that is pushed is: ");
+    console.log(idle_option);
 
+    return idle_option;
 
-    if (patrolling_area_counter == 1) {
+    /*if (patrolling_area_counter == 1) {
         idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
         patrolling_area_counter++;
     } else if (patrolling_area_counter == 2) {
@@ -482,8 +505,8 @@ function patrolling_case_selection() {
         idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
         patrolling_area_counter++;
     }
-
-    return idle_option;
+    */
+    
 }
 
 // Function to set the agent going to the (eventually present)best parcel into the long term parcel DB (GTMP). 
@@ -694,6 +717,7 @@ function option_choosing_function() {
 
     /// Case 1: Maximum number of carried parcels reached.
 
+    //TODO: Check behaviour on challenge_23 (maybe if cases for infinite and degredation with degredation still using max_parcels)
     if (me.parcel_count >= max_allowed_parcels) {
         console.log("OCF - Maximum number of carried parcels reached. Let's go to delivery.")
         best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
