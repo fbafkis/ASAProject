@@ -62,6 +62,13 @@ var interval_trigger = true;
 
 var map_initialized = false;
 
+var first_quadrant_tiles = [];
+var second_quadrant_tiles = [];
+var third_quadrant_tiles = [];
+var fourth_quadrant_tiles = [];
+
+var last_patrolling_point = [];
+
 /// Functions.
 
 //Function to calculate the distance using coordinates.
@@ -190,7 +197,9 @@ client.onConfig((config) => {
 // Retrieving the information about the map. 
 client.onMap((width, height, tiles) => {
     map.width = width;
+    console.log("WIDTH: " + map.width);
     map.height = height;
+    console.log("HEIGHT: " + map.height);
     for (const t of tiles) {
         map.add(t);
         // Add delivery tiles to delivery tiles DB.
@@ -198,6 +207,7 @@ client.onMap((width, height, tiles) => {
             delivery_tiles_database.push(t);
         }
     }
+    console.log(map.tiles);
     // Preparing the patrolling strategy. 
     select_patrolling_points();
     map_initialized = true;
@@ -231,7 +241,78 @@ const patrolling_y_coordinates = new Map()
 
 function select_patrolling_points() {
 
-    let target_x;
+    var first_quadrant = [];
+    var second_quadrant = [];
+    var third_quadrant = [];
+    var fourth_quadrant = [];
+
+    if (map.width % 2 == 0) {
+
+        if (map.height % 2 == 0) {
+            // height and width are even
+            first_quadrant.push(map.width / 2 - 1);
+            first_quadrant.push(map.height / 2 - 1);
+            second_quadrant.push(map.width / 2 - 1);
+            second_quadrant.push(map.height / 2);
+            third_quadrant.push(map.width / 2 );
+            third_quadrant.push(map.height / 2);
+            fourth_quadrant.push(map.width / 2);
+            fourth_quadrant.push(map.height / 2 - 1);
+        }
+        // width even, height odd
+            first_quadrant.push(map.width / 2 - 1);
+            first_quadrant.push((map.height + 1) / 2 - 1);
+            second_quadrant.push(map.width / 2 - 1);
+            second_quadrant.push((map.height + 1) / 2);
+            third_quadrant.push(map.width / 2 );
+            third_quadrant.push((map.height + 1) / 2);
+            fourth_quadrant.push(map.width / 2);
+            fourth_quadrant.push((map.height + 1) / 2 - 1);
+
+    } else {
+        
+        if (map.height % 2 == 0) {
+        // width odd, height even
+        first_quadrant.push((map.width + 1) / 2 - 1);
+        first_quadrant.push(map.height / 2 - 1);
+        second_quadrant.push((map.width + 1) / 2 - 1);
+        second_quadrant.push(map.height / 2);
+        third_quadrant.push((map.width + 1) / 2 );
+        third_quadrant.push(map.height / 2);
+        fourth_quadrant.push((map.width + 1) / 2);
+        fourth_quadrant.push(map.height / 2 - 1);
+        }
+        // width odd, height odd
+        first_quadrant.push((map.width + 1) / 2 - 1);
+        first_quadrant.push((map.height + 1) / 2 - 1);
+        second_quadrant.push((map.width + 1) / 2 - 1);
+        second_quadrant.push((map.height + 1) / 2);
+        third_quadrant.push((map.width + 1) / 2 );
+        third_quadrant.push((map.height + 1) / 2);
+        fourth_quadrant.push((map.width + 1) / 2);
+        fourth_quadrant.push((map.height + 1) / 2 - 1);
+    }
+
+    for (const tile of map.tiles.values()) {
+        if (tile.delivery == true) {
+            continue;
+        }
+        if (tile.x <= first_quadrant[0] && tile.y <= first_quadrant[1]) {
+            first_quadrant_tiles.push(tile);
+        } 
+        else if (tile.x <= second_quadrant[0] && tile.y >= second_quadrant[1]) {
+            second_quadrant_tiles.push(tile);
+        }
+        else if (tile.x >= third_quadrant[0] && tile.y >= third_quadrant[1]) {
+            third_quadrant_tiles.push(tile);
+        }
+        else if (tile.x >= fourth_quadrant[0] && tile.y <= fourth_quadrant[1]) {
+            fourth_quadrant_tiles.push(tile);
+        }
+    }
+   
+
+ /*   let target_x;
     let target_y;
     let valid_tile;
 
@@ -253,7 +334,7 @@ function select_patrolling_points() {
     patrolling_x_coordinates.set("4", (target_x * 2));
     patrolling_y_coordinates.set("4", (target_y));
 
-    return;
+    return; */
 }
 
 // TODO: is it used for somthing? 
@@ -352,12 +433,41 @@ function intention_revision_reset(){
 // Function that produces the best patrolling option for the current situation. 
 
 function patrolling_case_selection() {
-    let idle;
+
+    let idle_option;
+    let active_sector = [];
+    let random_index = null;
+    let selected_tile = null;
+    let patrolling_point_distance = null;
 
     //Check Quadrant Counter is in bounds
     if (patrolling_area_counter > 4 || patrolling_area_counter < 1) {
         patrolling_area_counter = 1;
     }
+
+    switch (patrolling_area_counter) {
+        case 1:
+          active_sector = first_quadrant_tiles;
+          break;
+        case 2:
+          active_sector = second_quadrant_tiles;
+          break;
+        case 3:
+          active_sector = third_quadrant_tiles;
+          break;
+        case 4:
+          active_sector = fourth_quadrant_tiles;
+          break;
+        default:
+          console.log("default");
+          //TODO: Implement default case - just not defined for testing
+      }
+
+      random_index = Math.floor(Math.random() * active_sector.length);
+      selected_tile = active_sector[random_index];
+      patrolling_point_distance = calculate_distance(last_patrolling_point.x, last_patrolling_point.y, selected_tile.x, selected_tile.y);
+
+
 
     if (patrolling_area_counter == 1) {
         idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
@@ -373,7 +483,7 @@ function patrolling_case_selection() {
         patrolling_area_counter++;
     }
 
-    return idle;
+    return idle_option;
 }
 
 // Function to set the agent going to the (eventually present)best parcel into the long term parcel DB (GTMP). 
