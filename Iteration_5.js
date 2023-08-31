@@ -40,6 +40,8 @@ var patrolling_moves_counter = 0;
 // Limit of patrolling moves to execute while I am carrying some parcels before to force the delivery. 
 var patrolling_moves_treshold = 5;
 
+var decading_factor;
+
 var long_term_parcel_db = new Map;
 var ltpdb_update_interval;
 var interval_trigger = true;
@@ -70,15 +72,25 @@ client.onConfig((config) => {
     max_parcels = config.PARCELS_MAX;
     // Initializing the long term parcel DB refreshing interval basing on the value of the decading interval. 
     switch (parcel_decading_interval) {
-        case '1s': ltpdb_update_interval = 1000;
+        case '1s': 
+            ltpdb_update_interval = 1000;
+            decading_factor = 1;
             break;
-        case '2s': ltpdb_update_interval = 2000;
+        case '2s': 
+            ltpdb_update_interval = 2000; 
+            decading_factor = 0.5;
             break;
-        case '5s': ltpdb_update_interval = 5000;
+        case '5s':
+            ltpdb_update_interval = 5000;
+            decading_factor = 0.2;
             break;
-        case '10s': ltpdb_update_interval = 10000;
+        case '10s': 
+            ltpdb_update_interval = 10000;
+            decading_factor = 0.1;
             break;
-        default: ltpdb_update_interval = 1000;
+        default: 
+            ltpdb_update_interval = 1000;
+            decading_factor = 0;
             break;
     }
     game_initialized = true;
@@ -223,11 +235,11 @@ function intention_revision_reset(){
         // Set IQ Length to 0
         myAgent.intention_queue.length = 0;
 
-        let recovery_min_del_tile_distance = -1;
+        let recovery_min_del_tile_distance = null;
         let recovery_agent_nearest_delivery_tile;
         delivery_tiles_database.forEach(dt => {
             let distance = calculate_distance(dt.x, dt.y, me.x, me.y);
-            if (recovery_min_del_tile_distance == -1) {
+            if (recovery_min_del_tile_distance == null) {
                 recovery_min_del_tile_distance = distance;
                 recovery_agent_nearest_delivery_tile = dt;
             } else {
@@ -281,11 +293,11 @@ function go_to_memorized_parcel() {
 
     for (const [pid, parcel] of long_term_parcel_db) {
 
-        var direct_min_del_tile_distance = -1;
+        var direct_min_del_tile_distance = null;
         var parcel_nearest_delivery_tile;
         delivery_tiles_database.forEach(dt => {
             let distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
-            if (direct_min_del_tile_distance == -1) {
+            if (direct_min_del_tile_distance == null) {
                 direct_min_del_tile_distance = distance;
                 parcel_nearest_delivery_tile = dt;
             } else {
@@ -298,22 +310,84 @@ function go_to_memorized_parcel() {
 
 
         let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
-        let parcel_ratio = parcel.reward - total_distance; // TODO: add decading factor multiplying. 
-
+        let parcel_ratio = parcel.reward - Math.round(total_distance * decading_factor); 
         if (highest_ratio == null) {
             highest_ratio = parcel_ratio;
             best_parcel = parcel;
         } else {
             if (parcel_ratio > highest_ratio)
                 highest_ratio = parcel_ratio;
-            best_parcel = parcel;
+                best_parcel = parcel;
         }
     }
+
+    // Check if parcel is worth to be picked up -> If not go normal patrolling
+
+    if (highest_ratio > 0) {
     console.log("GTMP - The best parcel to try to pickup from the long term parcel DB is: ");
     console.log(best_parcel);
 
     var option = ['patrolling', best_parcel.x, best_parcel.y];
     return option;
+    } else {
+        var option = patrolling_case_selection();
+        patrolling_moves_counter++;
+        return option;
+    }
+}
+
+// Function that selects the best available parcel that is in the long term parcel_db -> returns best option which is used for comparing
+
+function best_option_memorized_parcel(){
+
+    let highest_ratio = null;
+    let best_parcel = null;
+    let best_parcel_distance = null;
+    let return_values = [];
+
+    for (const [pid, parcel] of long_term_parcel_db) {
+
+        var direct_min_del_tile_distance = null;
+        var parcel_nearest_delivery_tile;
+        delivery_tiles_database.forEach(dt => {
+            let distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
+            if (direct_min_del_tile_distance == null) {
+                direct_min_del_tile_distance = distance;
+                parcel_nearest_delivery_tile = dt;
+            } else {
+                if (distance < direct_min_del_tile_distance) {
+                    direct_min_del_tile_distance = distance;
+                    parcel_nearest_delivery_tile = dt;
+                }
+            }
+        });
+
+
+        let distance = calculate_distance(me.x, me.y, parcel.x, parcel.y);
+
+        if (distance > (parcel_sensing_distance + 3)) {
+            continue;
+        }
+        else {
+        let total_distance = distance + direct_min_del_tile_distance;
+        let parcel_ratio = parcel.reward - Math.round(total_distance * decading_factor); 
+        if (highest_ratio == null) {
+            highest_ratio = parcel_ratio;
+            best_parcel = parcel;
+            best_parcel_distance = total_distance;
+        } else {
+            if (parcel_ratio > highest_ratio)
+                highest_ratio = parcel_ratio;
+                best_parcel = parcel;
+                best_parcel_distance = total_distance;
+        }
+    }
+}
+    return_values.push(best_parcel);
+    return_values.push(highest_ratio);
+    return_values.push(best_parcel_distance);
+
+    return return_values;
 }
 
 // Option Choosing Function (OCF). The core function that provides always the best option for the current situation. 
@@ -331,11 +405,11 @@ function option_choosing_function() {
     //console.log("OCF - Delivery tiles DB length:");
     //console.log(delivery_tiles_database.length);
 
-    var direct_min_del_tile_distance = -1;
+    var direct_min_del_tile_distance = null;
     var agent_nearest_delivery_tile;
     delivery_tiles_database.forEach(dt => {
         let distance = calculate_distance(dt.x, dt.y, me.x, me.y);
-        if (direct_min_del_tile_distance == -1) {
+        if (direct_min_del_tile_distance == null) {
             direct_min_del_tile_distance = distance;
             agent_nearest_delivery_tile = dt;
         } else {
@@ -346,49 +420,73 @@ function option_choosing_function() {
         }
     });
 
-    //console.log("OCF - Nearest delivery tile respect to myself:");
-    //console.log(agent_nearest_delivery_tile);
-    //console.log("OCF - Minimum agent - delivery tile distance:");
-    //console.log(direct_min_del_tile_distance);
+
 
     /// 0.2 Calculate the reward/distance ratio for each parcel, finding out the one with the highest. 
     let best_ratio_parcel;
-    let best_ratio = -1;
-    let best_ratio_distance = -1;
+    let best_ratio = null;
+
 
     // Check that into the perceived parcels there are not only those I am carrying, otherwise it is useless to search for best ratio parcel.
     if (me.parcel_count < parcel_db.size) {
         for (const [pid, parcel] of parcel_db) {
             if (parcel.carriedBy != me.id) { // Not considering parcels carried by myself. 
-                let distance = calculate_distance(parcel.x, parcel.y, me.x, me.y)
+
+                //Check distance from parcel to closest delivery tile
+
+                var parcel_to_del_tile_distance = null;
+                var parcel_closest_delivery_tile;
+       
+                delivery_tiles_database.forEach(dt => {
+                     let p_dt_distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
+                      if (parcel_to_del_tile_distance == null) {
+                      parcel_to_del_tile_distance = p_dt_distance;
+                      parcel_closest_delivery_tile = dt;
+                     } else {
+                         if (p_dt_distance < parcel_to_del_tile_distance) {
+                            parcel_to_del_tile_distance = p_dt_distance;
+                            parcel_closest_delivery_tile = dt;
+                }
+            }
+        });
+
+        //Calculate which parcel offers the highest ratio
+
+                let distance = calculate_distance(parcel.x, parcel.y, me.x, me.y) + parcel_to_del_tile_distance; 
                 let ratio
                 if (distance > 0) {
-                    ratio = parcel.reward - distance;
+                    ratio = parcel.reward - Math.round(distance * decading_factor);
                 } else {
                     ratio = parcel.reward;
                 }
-                if (best_ratio == -1) {
+                if (best_ratio == null) {
                     best_ratio_parcel = parcel;
                     best_ratio = ratio;
-                    best_ratio_distance = distance;
                 } else {
                     if (ratio > best_ratio) {
                         best_ratio = ratio;
                         best_ratio_parcel = parcel;
-                        best_ratio_distance = distance;
-                    }
+                        }
                 }
                
             }
         }
-         console.log("OCF - Parcel " + best_ratio_parcel.id + " has the best ratio with the value: " + best_ratio_parcel);
+         console.log("OCF - Parcel " + best_ratio_parcel.id + " has the best ratio with the value: " + best_ratio);
     }
 
-    
-    //console.log("OCF - Best reward/distance ratio parcel:");
-    //console.log(best_ratio_parcel);
-    //console.log("OCF - Best reward/distance ratio:");
-    //console.log(best_ratio);
+    // 0.3 Compare with memorized parcels of long term parcel_db
+
+    var memorized_parcel_option = best_option_memorized_parcel();
+    var best_memorized_parcel;
+
+    if (memorized_parcel_option[0] == null || memorized_parcel_option[1] < 0)  {
+        best_memorized_parcel = null;
+    } else {
+        best_memorized_parcel = memorized_parcel_option[0];
+        console.log("OCF - Parcel " + best_memorized_parcel.id + " has the best ratio of the long-term parcel_db with the value: " + memorized_parcel_option[1]);
+    }
+
+ 
 
     /// Case management.
 
@@ -409,8 +507,16 @@ function option_choosing_function() {
             console.log("OCF - No degradation perceived.");
             // Check if among the perceived parcels there aren't only the carried parcels. 
             if (me.parcel_count < parcel_db.size) {
+                // Compare best available parcel in the sensing area with best available parcel of the long term parcel_db
+                if ((best_memorized_parcel != null) && (memorized_parcel_option[1] >= best_ratio + 10)) {
+                // Choose to patroll to best registered parcel from the long-term-memory
+                best_option = ['patrolling', best_memorized_parcel.x, best_memorized_parcel.y];
+                console.log("OCF - Parcel " + best_memorized_parcel.id + "is set as the patrolling destination");
+                } else {
                 // Choose to pickup the parcel with the highest reward/distance ratio. 
                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
+                console.log("OCF - Parcel " + best_ratio_parcel.id + "is set as the best option");
+                }  
             } else if (me.parcel_count == parcel_db.size) {
                 // If the perceived parcels are only those that I am carrying, go for patrolling. 
                 if (long_term_parcel_db.size == 0) { // If no parcels inside the long term parcel DB
@@ -442,11 +548,26 @@ function option_choosing_function() {
             if (me.parcel_count == 0 && parcel_db.size != 0) {
 
                 if (best_ratio > 0) {
+
+                // Compare best available parcel in the sensing area with best available parcel of the long term parcel_db
+                if ((best_memorized_parcel != null) && (memorized_parcel_option[1] >= best_ratio + 10)) {
+                // Choose to patroll to best registered parcel from the long-term-memory
+                best_option = ['patrolling', best_memorized_parcel.x, best_memorized_parcel.y];
+                console.log("OCF - Parcel " + best_memorized_parcel.id + "is set as the patrolling destination");
+                } else {
+                // Choose to pickup the parcel with the highest reward/distance ratio. 
                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
+                console.log("OCF - Parcel " + best_ratio_parcel.id + "is set as the best option");
+                }   
+
             } else {
-            //TODO: Check Long Term memory to determine which patrolling
-                best_option = patrolling_case_selection();
-                patrolling_moves_counter++;
+                if (long_term_parcel_db.size == 0) { // If no parcels inside the long term parcel DB
+                    best_option = patrolling_case_selection();
+                    patrolling_moves_counter++;
+                } else { // If there is at least one parcel inside the long term parcel DB, exploit it. 
+                    best_option = go_to_memorized_parcel();
+                    console.log("OCF - Exploiting long term parcel DB to optimize patrolling.");
+                }
             }
 
             }
@@ -480,20 +601,7 @@ function option_choosing_function() {
                 /// 2.2.4.1 Calculate the estimated final score for each parcel that is carried right 
                 /// now in case of direct delivery (no picking up new parcels). 
 
-                let decading_factor;
-
-                switch (parcel_decading_interval) {
-                    case '1s': decading_factor = 1;
-                        break;
-                    case '2s': decading_factor = 0.5;
-                        break;
-                    case '5s': decading_factor = 0.2;
-                        break;
-                    case '10s': decading_factor = 0.1;
-                    default: decading_factor = 0;
-                        break;
-                }
-
+            
                 var my_parcels_db_no_pickup = new Map;
 
                 for (const [key, p] of parcel_db.entries()) {
@@ -528,11 +636,11 @@ function option_choosing_function() {
                     ///  2.2.4.3.1 Find and calulate related distance of the nearest delivery tile for the current analyzed parcel. 
 
                     if (!p.carriedBy) { // make sure that I am not analyzing a parcel that I am currently carrying (the parcels carried by others are not placed into parcel DB).
-                        let parcel_min_del_tile_distance = -1;
+                        let parcel_min_del_tile_distance = null;
                         var parcel_nearest_delivery_tile;
                         delivery_tiles_database.forEach(dt => {
                             let distance = calculate_distance(dt.x, dt.y, p.x, p.y);
-                            if (parcel_min_del_tile_distance == -1) {
+                            if (parcel_min_del_tile_distance == null) {
                                 parcel_min_del_tile_distance = distance;
                                 parcel_nearest_delivery_tile = dt;
                             } else {
@@ -606,9 +714,81 @@ function option_choosing_function() {
 
                 } /// End of if to check that the currently analyzed parcel is not carried by me. 
 
+                // If the best option of the long-term parcel_db is not null and the Agent carries two or less parcels
+
+                if ((best_memorized_parcel != null) && (me.parcel_count <= 2)) {
+                  
+                    let memory_my_parcels_db_pickup = new Map;
+
+                    for (const [pid, parcel] of parcel_db.entries()) {
+                        if (parcel.carriedBy == me.id) {
+                            let eventual_reward = parcel.reward - Math.round(memorized_parcel_option[2] * decading_factor);
+                            if (eventual_reward < 0)
+                            eventual_reward = 0;
+                            memory_my_parcels_db_pickup.set(parcel, eventual_reward);
+                        }
+                    }
+
+                 
+                    // Calculating the agent final reward (sum of all carried parcels + currently analyzed perceived parcel reward estimation from long-term parcel_db).
+
+                    var agent_memory_final_reward_pickup = memorized_parcel_option[1];
+
+                    console.log("OCF - Agent total final reward if pickup parcel from long-term parcel_db " + best_memorized_parcel.id + " is " + agent_memory_final_reward_pickup);
+
+                    for (const [key, eventual_reward] of memory_my_parcels_db_pickup.entries()) {
+                        agent_memory_final_reward_pickup += eventual_reward;
+                    }
+
+
+                    console.log("OCF - Agent total final reward if pickup parcel from long-term parcel_db  " + best_memorized_parcel.id + " is " + agent_memory_final_reward_pickup + " after sum");
+
+                }
+
                 /// 2.2.4.4 Check if there is any parcel in the list of the valid parcels (the perceived parcel that likely, due to the estimation done, 
                 /// will grant a gain in terms of agent's total final reward). If the list is empty the go_delivery option is selected as the best one. 
                 /// Otherwise the go_pickup option for the parcel that grants the highest reward is selected as the best one. 
+
+                // Agent consider long-term parcel_db only if it carries less than 3 parcels
+                 if ((best_memorized_parcel != null) && (me.parcel_count <= 2)) {
+
+                    // If we have valid options in the sensing area, we compare them to the best option of the long-term parcel_db
+                    if (valid_parcels.size > 0) {
+                        var best_parcel;
+                        var highest_reward = 0;
+                        for (const [reward, parcel] of valid_parcels.entries()) {
+                            if (reward > highest_reward) {
+                                highest_reward = reward;
+                                best_parcel = parcel;
+                            }
+                        }
+                    
+
+                    if (agent_memory_final_reward_pickup > (highest_reward + 10)) {
+
+                        console.log("OCF - Patrolling to the best available parcel of the long-term parcel_db has the possibility to grant the highest score. The parcel is: ");
+                        console.log(best_memorized_parcel);
+                        best_option = ['patrolling', best_memorized_parcel.x, best_memorized_parcel.y];
+                    } else {
+    
+                        console.log("OCF - Picking up one of the perceived parcels will probably grant a gain in terms of score. The parcel is:");
+                        console.log(best_parcel);
+                        best_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id];
+                    }
+                } else {
+                    // If agent doesn't have available parcel in sensing scope -> it checks what value the parcel outside the sensing scope generates and makes decision
+                    if (agent_memory_final_reward_pickup > 15) {
+                        console.log("OCF - Patrolling to the best available parcel of the long-term parcel_db has the possibility to grant the highest score. The parcel is: ");
+                        console.log(best_memorized_parcel);
+                        best_option = ['patrolling', best_memorized_parcel.x, best_memorized_parcel.y];
+                    } else {
+                    console.log("OCF - None of the perceived parcels will grant a gain in terms of score. Let's go directly to delivery.");
+                    best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+                    }
+                 }  
+                }   
+                // else case is the standard version that we had implemented before            
+                 else {
 
                 // If there is at least a valid parcel that will probably produce a gain in terms of score, select the one that will probably grant the highest reward. 
                 if (valid_parcels.size > 0) {
@@ -630,6 +810,7 @@ function option_choosing_function() {
                     console.log("OCF - None of the perceived parcels will grant a gain in terms of score. Let's go directly to delivery.");
                     best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
                 }
+              }
             }
         }
     }
