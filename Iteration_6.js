@@ -55,6 +55,12 @@ var additional_reward_put_down = 15;
 var upper_boundary_carried_parcels = 2;
 // Degredation Factor
 var decading_factor;
+// Duration of the Agents movements
+var movement_time;
+// Recalculated movement time -> needed for option fct
+var movement_factor = 0;
+// Adapted factor for carried parcels
+var carrying_movement_factor = 0;
 
 var long_term_parcel_db = new Map;
 var ltpdb_update_interval;
@@ -62,15 +68,16 @@ var interval_trigger = true;
 
 var map_initialized = false;
 
+// Stores all valid Tiles per patrolling quadrant
 var first_quadrant_tiles = [];
 var second_quadrant_tiles = [];
 var third_quadrant_tiles = [];
 var fourth_quadrant_tiles = [];
-
+// Last known regular patrolling point 
 var last_patrolling_point = [];
-
+// Distance between two patrolling points for comparing
 var patrolling_distance_between_points = 5;
-
+// If agent has already patrolled or not
 var patrolling_init = false;
 
 /// Functions.
@@ -80,6 +87,34 @@ function calculate_distance(target_x, target_y, tile_x, tile_y) {
     const dx = Math.abs(Math.round(target_x) - Math.round(tile_x))
     const dy = Math.abs(Math.round(target_y) - Math.round(tile_y))
     return dx + dy;
+}
+
+function calculate_movement_factor() {
+    
+    // default value of movement duration is 500 -> calculate factor that represents increased movement speed
+    // current settings developed through testing
+
+    movement_factor = movement_time / 500;
+    console.log(movement_factor);
+    if (movement_factor <= 0.4) {
+        carrying_movement_factor = movement_factor + 0.4;
+    }
+    else if (movement_factor > 0.4 && movement_factor <= 0.7) {
+        carrying_movement_factor = movement_factor + 0.3;
+    } else if (movement_factor > 0.7 && movement_factor <= 0.8) {
+        carrying_movement_factor = movement_factor + 0.2;
+    } else if (movement_factor > 0.8 && movement_factor <= 0.9) {
+        carrying_movement_factor = movement_factor + 0.1;
+    }else {
+    carrying_movement_factor = movement_factor;
+    }
+
+    if (movement_factor < 0.3) {
+        movement_factor = movement_factor + 0.2;
+    } else if (movement_factor < 0.5) {
+        movement_factor = movement_factor + 0.1;
+    }
+    return;
 }
 
 // Getting the optimal path using breadth first search algorithm (GOP). 
@@ -162,6 +197,7 @@ client.onConfig((config) => {
     parcel_decading_interval = config.PARCEL_DECADING_INTERVAL;
     parcel_sensing_distance = config.PARCELS_OBSERVATION_DISTANCE;
     max_parcels = config.PARCELS_MAX;
+    movement_time = config.MOVEMENT_DURATION;
 
     // Setting maximum number of allowed parcels 
     if ((max_parcels % 2) == 0) {
@@ -172,6 +208,10 @@ client.onConfig((config) => {
     if (min_allowed_parcels >= max_allowed_parcels) {
         min_allowed_parcels = 1;
     }
+
+    // Calculate factor for movement duration
+    calculate_movement_factor();
+
     // Initializing the long term parcel DB refreshing interval basing on the value of the decading interval. 
     switch (parcel_decading_interval) {
         case '1s': 
@@ -196,6 +236,7 @@ client.onConfig((config) => {
             break;
     }
     game_initialized = true;
+
 });
 
 // Retrieving the information about the map. 
@@ -246,6 +287,7 @@ function select_patrolling_points() {
     var second_quadrant = [];
     var third_quadrant = [];
     var fourth_quadrant = [];
+    
 
     if (map.width % 2 == 0) {
 
@@ -312,6 +354,7 @@ function select_patrolling_points() {
         }
     }
    
+
 
  /*   let target_x;
     let target_y;
@@ -446,6 +489,7 @@ function patrolling_case_selection() {
         patrolling_area_counter = 1;
     }
 
+
     switch (patrolling_area_counter) {
         case 1:
           active_sector = first_quadrant_tiles;
@@ -463,6 +507,8 @@ function patrolling_case_selection() {
           console.log("default");
           //TODO: Implement default case - just not defined for testing
       }
+
+      console.log(active_sector.length);
 
       if (patrolling_init == false) {
       random_index = Math.floor(Math.random() * active_sector.length);
@@ -535,7 +581,7 @@ function go_to_memorized_parcel() {
 
 
         let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
-        let parcel_ratio = parcel.reward - Math.round(total_distance * decading_factor); 
+        let parcel_ratio = parcel.reward - Math.round((total_distance * decading_factor) * movement_factor); 
         if (highest_ratio == null) {
             highest_ratio = parcel_ratio;
             best_parcel = parcel;
@@ -595,7 +641,7 @@ function best_option_memorized_parcel(){
         }
         else {
         let total_distance = distance + direct_min_del_tile_distance;
-        let parcel_ratio = parcel.reward - Math.round(total_distance * decading_factor); 
+        let parcel_ratio = parcel.reward - Math.round((total_distance * decading_factor) * movement_factor); 
         if (highest_ratio == null) {
             highest_ratio = parcel_ratio;
             best_parcel = parcel;
@@ -680,7 +726,7 @@ function option_choosing_function() {
                 let distance = calculate_distance(parcel.x, parcel.y, me.x, me.y) + parcel_to_del_tile_distance; 
                 let ratio
                 if (distance > 0) {
-                    ratio = parcel.reward - Math.round(distance * decading_factor);
+                    ratio = parcel.reward - Math.round((distance * decading_factor) * movement_factor);
                 } else {
                     ratio = parcel.reward;
                 }
@@ -847,7 +893,7 @@ function option_choosing_function() {
 
                 for (const [key, p] of parcel_db.entries()) {
                     if (p.carriedBy == me.id) {
-                        let final_reward = p.reward - Math.round(direct_min_del_tile_distance * decading_factor);
+                        let final_reward = p.reward - Math.round((direct_min_del_tile_distance * decading_factor) * movement_factor);
                         if (final_reward < 0)
                             final_reward = 0;
                         my_parcels_db_no_pickup.set(p, final_reward);
@@ -905,7 +951,7 @@ function option_choosing_function() {
 
                         for (const [pid, parcel] of parcel_db.entries()) {
                             if (parcel.carriedBy == me.id) {
-                                let final_reward = parcel.reward - Math.round(parcel_total_distance * decading_factor);
+                                let final_reward = parcel.reward - Math.round((parcel_total_distance * decading_factor) * carrying_movement_factor);
                                 //console.log("OCF - Decading factor: " + decading_factor);
                                 //console.log("OCF - Parcel total distance: " + parcel_total_distance);
                                 //console.log("OCF - Final carried parcel score if pickup: " + (final_reward + me.score));
@@ -920,7 +966,7 @@ function option_choosing_function() {
 
                         /// 2.2.4.3.4 Calculate the currently analyzed parcel final reward.
 
-                        let current_parcel_final_reward = p.reward - Math.round(parcel_total_distance * decading_factor);
+                        let current_parcel_final_reward = p.reward - Math.round((parcel_total_distance * decading_factor) * movement_factor);
                       
                         if (current_parcel_final_reward < 0) {
                             current_parcel_final_reward = 0;
@@ -961,9 +1007,10 @@ function option_choosing_function() {
                   
                     let memory_my_parcels_db_pickup = new Map;
 
+                    //determine the value of all currently carried parcels in case of patrolling to parcel from long-term memory
                     for (const [pid, parcel] of parcel_db.entries()) {
                         if (parcel.carriedBy == me.id) {
-                            let eventual_reward = parcel.reward - Math.round(memorized_parcel_option[2] * decading_factor);
+                            let eventual_reward = parcel.reward - Math.round((memorized_parcel_option[2] * decading_factor) * carrying_movement_factor);
                             if (eventual_reward < 0)
                             eventual_reward = 0;
                             memory_my_parcels_db_pickup.set(parcel, eventual_reward);
