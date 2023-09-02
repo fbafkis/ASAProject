@@ -2,10 +2,10 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkZTA2ZTJkZjQxIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNjYzMjYxfQ.RokWx-ZHe1HcDvsRZ5zu3T7vonf05rju5xG2qj43dBk')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImUwNmUyZGY0MTBjIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNjY4NzI4fQ.djCOmauOA4gz41QUwc3NOSJ-KtcczWHvm45_Av-Yxqg')
 
 /// The other agent id. 
-var other_agent_id = "2aade06e2df";
+var other_agent_id = "6e2df410c1c";
 
 /// Variables and constants.
 
@@ -93,7 +93,11 @@ var patrolling_init = false;
 const quadrants = ["first", "second", "third", "fourth"];
 // A flag used in multi agent area bargaining to check if the process has been completed. 
 var patrolling_area_assigned = false;
+//Flag for checking completion of quadrants retrieving. 
 var quadrants_retrieved = false;
+// 0 or 1 flag to cycle over the 2 quadrants. 
+var last_quadrant = 0;
+
 
 /// Functions.
 
@@ -141,16 +145,21 @@ async function deal_patrolling_area() {
     let message = { type: "area_dealing_request", quadrants: other_agent_quadrants };
     console.log("PAD - Asking other agent for dealing ...");
     var reply;
-    var wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-    var asking = new Promise(async resolve => reply = await client.ask(other_agent_id, message) );
-    var timeout = (p, ms) => Promise.race([asking, wait(ms).then(() => {
-        console.log("PAD - Communication with other agent failed.")
-    })]);
 
-    timeout(wait(2000), asking);
-    
+    function wait(ms) {
+        return new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('timeout succeeded')), ms);
+        });
+    }
 
-    console.log("PAD - Reply:" + reply);
+    try {
+        reply = await Promise.race([wait(2000), client.ask(other_agent_id, message)]);
+    } catch (err) {
+        console.log("PAD - Error in communicating with other agent.");
+    }
+
+    console.log("PAD - Reply:");
+    console.log(reply);
     if (reply) {
         // The other agent accepted my proposal: or it already has chosen the 2 other quadrants or ir hasn't completed the quadrant selection process. 
         if (reply.response === "OK") {
@@ -177,6 +186,7 @@ async function deal_patrolling_area() {
         my_quadrants[1] = my_fav_quadrants[1];
         patrolling_area_assigned = true;
     }
+
 }
 
 // Parcel sensing message sending (PSMS).
@@ -645,11 +655,13 @@ async function patrolling_case_selection() {
 
     if (my_quadrants[0] === "first" || my_quadrants[0] === "fourth") {
 
-        if (me.x <= first_quadrant[0] && me.y <= first_quadrant[1]) {
+        if (last_quadrant == 1) {
             active_sector = first_quadrant_tiles;
+            last_quadrant = 0;
             console.log("PCS - Active sector: first quadrant.");
-        } else if (me.x >= fourth_quadrant[0] && me.y <= fourth_quadrant[1]) {
+        } else if (last_quadrant == 0) {
             active_sector = fourth_quadrant_tiles;
+            last_quadrant = 1;
             console.log("PCS - Active sector: fourth quadrant.");
         } else {
             let first_quadrant_distance = calculate_distance(me.x, me.y, first_quadrant[0], first_quadrant[1]);
@@ -657,20 +669,24 @@ async function patrolling_case_selection() {
 
             if (first_quadrant_distance >= fourth_quadrant_distance) {
                 active_sector = fourth_quadrant_tiles;
+                last_quadrant = 1;
                 console.log("PCS - Active sector: fourth quadrant.");
             } else {
                 active_sector = first_quadrant_tiles;
+                last_quadrant = 0;
                 console.log("PCS - Active sector: first quadrant.");
             }
         }
 
     } else if (my_quadrants[0] === "second" || my_quadrants[0] === "third") {
 
-        if (me.x <= second_quadrant[0] && me.y >= second_quadrant[1]) {
+        if (last_quadrant == 1) {
             active_sector = second_quadrant_tiles;
+            last_quadrant = 0;
             console.log("PCS - Active sector: second quadrant.");
-        } else if (me.x >= third_quadrant[0] && me.y >= third_quadrant[1]) {
+        } else if (last_quadrant == 0) {
             active_sector = third_quadrant_tiles;
+            last_quadrant = 1;
             console.log("PCS - Active sector: third quadrant.");
         } else {
             let second_quadrant_distance = calculate_distance(me.x, me.y, second_quadrant[0], second_quadrant[1]);
@@ -678,9 +694,11 @@ async function patrolling_case_selection() {
 
             if (second_quadrant_distance >= third_quadrant_distance) {
                 active_sector = third_quadrant_tiles;
+                last_quadrant = 1;
                 console.log("PCS - Active sector: third quadrant.");
             } else {
                 active_sector = second_quadrant_tiles;
+                last_quadrant = 0;
                 console.log("PCS - Active sector: second quadrant.");
             }
         }

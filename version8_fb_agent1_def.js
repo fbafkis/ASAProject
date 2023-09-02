@@ -1,12 +1,3 @@
-import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-/// The client instance.
-const client = new DeliverooApi(
-    'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkZTA2ZTJkZjQxIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNjYzMjYxfQ.RokWx-ZHe1HcDvsRZ5zu3T7vonf05rju5xG2qj43dBk')
-
-/// The other agent id. 
-var other_agent_id = "2aade06e2df";
-
 /// Variables and constants.
 
 // Myself (my body).
@@ -93,65 +84,12 @@ var patrolling_init = false;
 const quadrants = ["first", "second", "third", "fourth"];
 // A flag used in multi agent area bargaining to check if the process has been completed. 
 var patrolling_area_assigned = false;
+//Flag for checking completion of quadrants retrieving. 
+var quadrants_retrieved = false;
 
 /// Functions.
 
 ///////////////////// Multi agent related. 
-
-// Function to update agents' assignment to parcels (UPA).
-function produce_estimations() {
-    let myself_parcels_estimations = new Map;
-
-    for (const [pid, parcel] of long_term_parcel_db) {
-        var direct_min_del_tile_distance = -1;
-        var parcel_nearest_delivery_tile;
-        delivery_tiles_database.forEach(dt => {
-            let distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
-            if (direct_min_del_tile_distance == -1) {
-                direct_min_del_tile_distance = distance;
-                parcel_nearest_delivery_tile = dt;
-            } else {
-                if (distance < direct_min_del_tile_distance) {
-                    direct_min_del_tile_distance = distance;
-                    parcel_nearest_delivery_tile = dt;
-                }
-            }
-        });
-
-        let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
-        let my_final_reward = parcel.reward - Math.round((parcel_total_distance * decading_factor) * carrying_movement_factor);
-        myself_parcels_estimations.set(pid, my_final_reward);
-    }
-    return myself_parcels_estimations;
-}
-
-async function update_parcel_assignment() {
-    let myself_parcels_estimations = produce_estimations();
-    let message = { type: "parcels_assignment_request" };
-    let reply = await client.ask(other_agent_id, message);
-
-    if (reply) {
-        for (const [pid, estimation] of myself_parcels_estimations) {
-            if (reply.estimation.has(pid)) {
-                if (reply.estimations.get(pid) >= estimation) {
-                    parcels_agents_assignments.set(pid, false);
-                } else {
-                    parcels_agents_assignments.set(pid, true);
-                }
-            } else {
-                parcels_agents_assignments.set(pid, true);
-            }
-        }
-
-        await client.say(other_agent_id, {
-            type: "parcel_assignment_update",
-            assignments: parcels_agents_assignments
-        });
-        console.log("UPA - Parcel assignment update sent.");
-    } else {
-        console.log("UPA - Never received a reply to the .");
-    }
-}
 
 // Function to produce tha patrolling pivots that will be distributed between agents (CFQ). 
 async function choose_my_fav_quadrants() {
@@ -194,8 +132,15 @@ async function deal_patrolling_area() {
     let other_agent_quadrants = quadrants.filter(q => !my_fav_quadrants.includes(q));
     let message = { type: "area_dealing_request", quadrants: other_agent_quadrants };
     console.log("PAD - Asking other agent for dealing ...");
-    // Send the request to the other agent. 
-    let reply = await client.ask(other_agent_id, message);
+    var reply;
+    var wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    var asking = new Promise(async resolve => reply = await client.ask(other_agent_id, message) );
+    var timeout = (p, ms) => Promise.race([asking, wait(ms).then(() => {
+        console.log("PAD - Communication with other agent failed.")
+    })]);
+
+    timeout(wait(2000), asking);
+    
 
     console.log("PAD - Reply:" + reply);
     if (reply) {
@@ -219,7 +164,7 @@ async function deal_patrolling_area() {
             patrolling_area_assigned = true;
         }
     } else {
-        console.log("PAD - Never received a reply to the dealing request. keeping my favourite quadrants.");
+        console.log("PAD - Never received a reply to the dealing request. Keeping my favourite quadrants.");
         my_quadrants[0] = my_fav_quadrants[0];
         my_quadrants[1] = my_fav_quadrants[1];
         patrolling_area_assigned = true;
@@ -2018,9 +1963,3 @@ planLibrary.push(GoPickUp)
 planLibrary.push(OptimalPathMove)
 planLibrary.push(GoPutDown)
 planLibrary.push(Patrolling)
-
-
-
-
-
-
