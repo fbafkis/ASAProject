@@ -102,7 +102,6 @@ var patrolling_area_assigned = false;
 function produce_estimations() {
     let myself_parcels_estimations = new Map;
 
-
     for (const [pid, parcel] of long_term_parcel_db) {
         var direct_min_del_tile_distance = -1;
         var parcel_nearest_delivery_tile;
@@ -119,21 +118,15 @@ function produce_estimations() {
             }
         });
 
-
         let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
-
         let my_final_reward = parcel.reward - Math.round((parcel_total_distance * decading_factor) * carrying_movement_factor);
-
         myself_parcels_estimations.set(pid, my_final_reward);
     }
     return myself_parcels_estimations;
 }
 
 async function update_parcel_assignment() {
-
-
     let myself_parcels_estimations = produce_estimations();
-
     let message = { type: "parcels_assignment_request" };
     let reply = await client.ask(other_agent_id, message);
 
@@ -156,7 +149,7 @@ async function update_parcel_assignment() {
         });
         console.log("UPA - Parcel assignment update sent.");
     } else {
-        console.log("UPA - Never received a reply to the dealing request.");
+        console.log("UPA - Never received a reply to the .");
     }
 }
 

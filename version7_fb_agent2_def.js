@@ -95,6 +95,7 @@ var patrolling_init = false;
 const quadrants = ["first", "second", "third", "fourth"];
 // A flag used in multi agent area bargaining to check if the process has been completed. 
 var patrolling_area_assigned = false;
+var quadrants_retrieved = false;
 
 /// Functions.
 
@@ -141,8 +142,15 @@ async function deal_patrolling_area() {
     let other_agent_quadrants = quadrants.filter(q => !my_fav_quadrants.includes(q));
     let message = { type: "area_dealing_request", quadrants: other_agent_quadrants };
     console.log("PAD - Asking other agent for dealing ...");
-    // Send the request to the other agent. 
-    let reply = await client.ask(other_agent_id, message);
+    var reply;
+    var wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    var asking = new Promise(async resolve => reply = await client.ask(other_agent_id, message) );
+    var timeout = (p, ms) => Promise.race([asking, wait(ms).then(() => {
+        console.log("PAD - Communication with other agent failed.")
+    })]);
+
+    timeout(wait(2000), asking);
+    
 
     console.log("PAD - Reply:" + reply);
     if (reply) {
@@ -166,7 +174,7 @@ async function deal_patrolling_area() {
             patrolling_area_assigned = true;
         }
     } else {
-        console.log("PAD - Never received a reply to the dealing request. keeping my favourite quadrants.");
+        console.log("PAD - Never received a reply to the dealing request. Keeping my favourite quadrants.");
         my_quadrants[0] = my_fav_quadrants[0];
         my_quadrants[1] = my_fav_quadrants[1];
         patrolling_area_assigned = true;
@@ -1965,7 +1973,6 @@ planLibrary.push(GoPickUp)
 planLibrary.push(OptimalPathMove)
 planLibrary.push(GoPutDown)
 planLibrary.push(Patrolling)
-
 
 
 
