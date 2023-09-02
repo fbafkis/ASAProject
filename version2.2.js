@@ -4,7 +4,7 @@ import fs from 'fs';
 
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImI4NWY1MWE4ZTg4IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTEwNDk3NzV9.n0wlpwc5301NNDfJtxG7rs4sd9MsYTFaClHMxYD61mA')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijg1ODhjNjY4MDM4IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMyMDk5MzZ9.7HAETpezOV1gvytGwTVb6bSP5OKH-90esIYElI_v8hI')
 
 function distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
     const dx = Math.abs(Math.round(x1) - Math.round(x2))
@@ -109,6 +109,10 @@ const patrolling_x_coordinates = new Map()
 const patrolling_y_coordinates = new Map()
 
 const myBeliefset = new Beliefset();
+myBeliefset.declare("me me");
+
+myBeliefset.declare("at me " + 4 + '-' + 2);
+//myBeliefset.declare("at me " + coordinates);
 
 client.onMap((width, height, tiles) => {
 
@@ -118,37 +122,21 @@ client.onMap((width, height, tiles) => {
 
     for (let { x, y, delivery } of tiles) {
 
-        myBeliefset.declare('tile ' + x + '_' + y);
-
-        myBeliefset.declare('right ' + x + '_' + y + ' ' + x + 1 + '_' + y + ' ');
-        myBeliefset.declare('left ' + x + '_' + y + ' ' + x - 1 + '_' + y + ' ')
-        myBeliefset.declare('up ' + x + '_' + y + ' ' + x + '_' + y + 1 + ' ')
-        myBeliefset.declare('down ' + x + '_' + y + ' ' + x + '_' + y - 1 + ' ')
-
-        console.log(tiles.find(x, y));
-
-
-        /*let right = tiles.find((_x, _y) => x == _x + 1 && y == _y);
-        let left = tiles.find((_x, _y) => x == _x - 1 && y == _y);
-        let up = tiles.find((_x, _y) => x == _x && y == _y + 1);
-        let down = tiles.find((_x, _y) => x == _x && y == _y - 1);
-
-       /* if (right) {
-            myBeliefset.declare('right ' + x + '_' + y + ' ' + right.x + '_' + right.y + ' ')
+        myBeliefset.declare('tile ' + x + '-' + y);
+        
+        
+        for (const tile of map.tiles.values()) {
+            if (tile.x == (x + 1) && tile.y == y) {
+                myBeliefset.declare('right ' + x + '-' + y + ' ' + tile.x + '-' + tile.y + ' ');
+            } else if (tile.x == (x - 1) && tile.y == y) {
+                myBeliefset.declare('left ' + x + '-' + y + ' ' + tile.x + '-' + tile.y + ' ');
+            }else if  (tile.x == x && tile.y == (y + 1)) {
+                myBeliefset.declare('up ' + x + '-' + y + ' ' + tile.x + '-' + tile.y + ' ');
+            }else if (tile.x == x && tile.y == (y - 1)) {
+                myBeliefset.declare('down ' + x + '-' + y + ' ' + tile.x + '-' + tile.y + ' ');            } 
         }
-
-        if (left) {
-            myBeliefset.declare('left ' + x + '_' + y + ' ' + left.x + '_' + left.y + ' ')
-        }
-
-        if (up) {
-            myBeliefset.declare('up ' + x + '_' + y + ' ' + up.x + '_' + up.y + ' ')
-        }
-
-        if (down) {
-            myBeliefset.declare('down ' + x + '_' + y + ' ' + down.x + '_' + down.y + ' ')
-        }*/
     }
+    
 
 })
 
@@ -201,8 +189,8 @@ client.onParcelsSensing(parcels => {
          */
 
         //Divide Map in 3rds and patroll between 1/3 and 2/3
-        target_y = Math.floor(map.height / 3) + 1;
-        target_x = Math.floor(map.width / 3) + 1;
+        target_y = 1;
+        target_x = 1;
 
         patrolling_x_coordinates.set("1", target_x);
         patrolling_y_coordinates.set("1", target_y);
@@ -425,7 +413,7 @@ class IntentionRevision {
                     //   console.log("queue empty and not carrying and parcel db")
                     //   console.log("parcel db size: "+ parcel_db.size);
 
-                    let idle = ['patrolling', 9, 9];
+                    let idle = ['patrolling', 1, 1];
 
                     /*if (patrolling_area == false) {
                      idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
@@ -710,78 +698,45 @@ class Patrolling extends Plan {
     }
 }
 
-class BlindMove extends Plan {
+//TODO: 1) Why is there no working plan available/plan not found? Me is missing as well as on Tile -> position of me declared
+//TODO: 2) Use both move versions for testing
+//TODO: 3) Domain - Check if there are occupied tiles -> just check tile - right/left/up/down?
+//TODO: 5) Ask about presentation time slot -> Write E-mail
+
+
+class PddlMove extends Plan {
 
     static isApplicableTo(go_to, x, y) {
         return go_to == 'go_to';
     }
 
     async execute(go_to, x, y) {
-
+ 
         var pddlProblem = new PddlProblem(
             'go_to',
             myBeliefset.objects.join(' '),
             myBeliefset.toPddlString(),
-            'and (at me ' + x + '_' + y + ')'
+            'and (at me ' + x + '-' + y + ')'
         )
 
         let problem = pddlProblem.toPddlString();
 
+        console.log("PROBLEM:")
         console.log(problem);
 
         let domain = await readFile('./domain_pddl_move.pddl');
 
-        //console.log("DOMAIN" + domain);
+        console.log("DOMAIN");
+        console.log(domain);
 
         var plan = await onlineSolver(domain, problem);
 
         console.log("PLAN:");
         console.log(plan);
-
-        /////
-        while (me.x != x || me.y != y) {
-
-            if (this.stopped) throw ['stopped']; // if stopped then quit
-
-            let status_x = false;
-            let status_y = false;
-
-            // this.log('me', me, 'xy', x, y);
-
-            if (x > me.x)
-                status_x = await client.move('right')
-            // status_x = await this.subIntention( 'go_to', {x: me.x+1, y: me.y} );
-            else if (x < me.x)
-                status_x = await client.move('left')
-            // status_x = await this.subIntention( 'go_to', {x: me.x-1, y: me.y} );
-
-            if (status_x) {
-                me.x = status_x.x;
-                me.y = status_x.y;
-            }
-
-            if (this.stopped) throw ['stopped']; // if stopped then quit
-
-            if (y > me.y)
-                status_y = await client.move('up')
-            // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y+1} );
-            else if (y < me.y)
-                status_y = await client.move('down')
-            // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y-1} );
-
-            if (status_y) {
-                me.x = status_y.x;
-                me.y = status_y.y;
-            }
-
-            if (!status_x && !status_y) {
-                this.log('stucked');
-                throw 'stucked';
-            } else if (me.x == x && me.y == y) {
-                // this.log('target reached');
-            }
-
-        }
+        
+        const pddlExecutor = new PddlExecutor( { name: 'go_to', executor: (m) => console.log('Agent moves '+ m) } );
+        pddlExecutor.exec( plan );
+       
 
         return true;
 
@@ -790,7 +745,7 @@ class BlindMove extends Plan {
 
 // plan classes are added to plan library 
 planLibrary.push(GoPickUp)
-planLibrary.push(BlindMove)
+planLibrary.push(PddlMove)
 planLibrary.push(GoPutDown)
 planLibrary.push(Patrolling)
 
