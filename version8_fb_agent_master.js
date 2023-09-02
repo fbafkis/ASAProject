@@ -62,8 +62,6 @@ var parcels_agents_assignments = new Map;
 // Version 8 addings
 
 // Function to update agents' assignment to parcels (UPA).
-
-
 function produce_estimations() {
     let myself_parcels_estimations = new Map;
 
