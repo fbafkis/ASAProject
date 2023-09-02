@@ -80,6 +80,9 @@ var patrolling_distance_between_points = 5;
 // If agent has already patrolled or not
 var patrolling_init = false;
 
+//TODO: Delete:
+var patrolling_history = [];
+
 /// Functions.
 
 //Function to calculate the distance using coordinates.
@@ -479,6 +482,8 @@ function intention_revision_reset(){
 function patrolling_case_selection() {
 
     let idle_option;
+    //TODO: delete
+    let idle_option_2;
     let active_sector = [];
     let random_index = null;
     let selected_tile = null;
@@ -515,6 +520,7 @@ function patrolling_case_selection() {
       selected_tile = active_sector[random_index];
       console.log("PCS - Initial Tile selected - x: " + selected_tile.x + " + y: " + selected_tile.y + " !");
       idle_option = ['patrolling', selected_tile.x, selected_tile.y];
+      idle_option_2 = ['patrolling', selected_tile.x, selected_tile.y, patrolling_area_counter];
       last_patrolling_point = selected_tile;
       patrolling_init = true;
       } else {
@@ -527,11 +533,13 @@ function patrolling_case_selection() {
 
       if (patrolling_point_distance > patrolling_distance_between_points) {
          idle_option = ['patrolling', selected_tile.x, selected_tile.y];
+         idle_option_2 = ['patrolling', selected_tile.x, selected_tile.y, patrolling_area_counter];
          last_patrolling_point = selected_tile;
          break;
       }
     }       
     }
+    patrolling_history.push(idle_option_2);
     patrolling_area_counter++;
     console.log("Patrolling intention that is pushed is: ");
     console.log(idle_option);
@@ -665,7 +673,15 @@ function best_option_memorized_parcel(){
 
 function option_choosing_function() {
 
-    //TODO: Parcel slips out of sensing area (Reward 28), in sensing area only 1 parcel (Reward 10) -> Makes probably sense to go to other parcel of long term memory
+    //TODO: delete
+    if (me.score >= 300 && me.score < 450) {
+        console.log(patrolling_history);
+        console.log("0");
+        console.log(patrolling_history[0]);
+        console.log("1");
+        console.log(patrolling_history[1]);
+    }
+
     /// Variables declaration.
 
     var best_option; //The best option that will be returned as result at the end of the function. 
@@ -761,11 +777,18 @@ function option_choosing_function() {
 
     /// Case management.
 
-    /// Case 1: Maximum number of carried parcels reached.
+    /// Case 1.1: Maximum number of carried parcels reached for infinite parcel degredation
 
     //TODO: Check behaviour on challenge_23 (maybe if cases for infinite and degredation with degredation still using max_parcels)
-    if (me.parcel_count >= max_allowed_parcels) {
-        console.log("OCF - Maximum number of carried parcels reached. Let's go to delivery.")
+    if ((me.parcel_count >= max_allowed_parcels) && (parcel_decading_interval == 'infinite')) {
+        console.log("OCF - 1.1 - Maximum number of carried parcels reached. Let's go to delivery.")
+        best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+    }
+
+    /// Case 1.2: Maximum number of carried parcels reached for active parcel degredation
+
+    else if  ((me.parcel_count >= max_parcels) && (parcel_decading_interval != 'infinite')) {
+        console.log("OCF - 1.2 - Maximum number of carried parcels reached. Let's go to delivery.")
         best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
     }
 
@@ -864,7 +887,7 @@ function option_choosing_function() {
             else if (me.parcel_count == 0 && me.parcel_count == parcel_db.size) {
                 if (long_term_parcel_db.size == 0) { // If no parcels inside the long term parcel DB
                     best_option = patrolling_case_selection();
-                    patrolling_area_counter++;
+                  //  patrolling_area_counter++;
                     console.log("OCF - Patrolling moves counter:");
                     console.log(patrolling_moves_counter);
                     console.log("OCF - Patrolling moves treshold:");
