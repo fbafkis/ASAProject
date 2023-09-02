@@ -2,10 +2,10 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImUwNmUyZGY0MTBjIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNjY4NzI4fQ.djCOmauOA4gz41QUwc3NOSJ-KtcczWHvm45_Av-Yxqg')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZlMmRmNDEwYzFjIiwibmFtZSI6ImRvZmIyIiwiaWF0IjoxNjkzNjY4Nzc2fQ.JDGSmOxlT9VxXNqcI2_5NtCLTka8RDMYcEHL2X6BQhY')
 
 /// The other agent id. 
-var other_agent_id = "6e2df410c1c";
+var other_agent_id = "e06e2df410c";
 
 /// Variables and constants.
 
@@ -1988,7 +1988,6 @@ planLibrary.push(GoPickUp)
 planLibrary.push(OptimalPathMove)
 planLibrary.push(GoPutDown)
 planLibrary.push(Patrolling)
-
 
 
 

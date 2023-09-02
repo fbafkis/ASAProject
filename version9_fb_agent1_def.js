@@ -2,10 +2,10 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImUwNmUyZGY0MTBjIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNjY4NzI4fQ.djCOmauOA4gz41QUwc3NOSJ-KtcczWHvm45_Av-Yxqg')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIyMzhlY2IyZWIyIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNjc4ODk2fQ.gAAfIrBoGvfhlPThWWjBlXCcwnwZRLoGMRJIDn1KqQI')
 
 /// The other agent id. 
-var other_agent_id = "6e2df410c1c";
+var other_agent_id = "cb2eb254d23";
 
 /// Variables and constants.
 
@@ -97,11 +97,110 @@ var patrolling_area_assigned = false;
 var quadrants_retrieved = false;
 // 0 or 1 flag to cycle over the 2 quadrants. 
 var last_quadrant = 0;
+// The parcel assignment DB. 
+var parcels_agents_assignments = new Map;
 
 
 /// Functions.
 
 ///////////////////// Multi agent related. 
+
+function produce_estimations() {
+    let myself_parcels_estimations = new Map;
+
+    console.log("Produce esitmaiton ltpdb size:" + long_term_parcel_db.size);
+
+    for (const [pid, parcel] of long_term_parcel_db) {
+        var direct_min_del_tile_distance = -1;
+        var parcel_nearest_delivery_tile;
+        delivery_tiles_database.forEach(dt => {
+            let distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
+            if (direct_min_del_tile_distance == -1) {
+                direct_min_del_tile_distance = distance;
+                parcel_nearest_delivery_tile = dt;
+            } else {
+                if (distance < direct_min_del_tile_distance) {
+                    direct_min_del_tile_distance = distance;
+                    parcel_nearest_delivery_tile = dt;
+                }
+            }
+        });
+
+
+        let parcel_total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
+
+        let my_final_reward = parcel.reward - Math.round((parcel_total_distance * decading_factor) * carrying_movement_factor);
+
+        myself_parcels_estimations.set(pid, my_final_reward);
+    }
+
+
+
+    return myself_parcels_estimations;
+}
+
+// Function that updates and exchanges between agents the estimations of reward for each parcel (UPA).
+
+async function update_parcel_assignment() {
+
+    let myself_parcels_estimations = produce_estimations();
+
+
+    for (const [pid, estimation] of myself_parcels_estimations) {
+        console.log("UPA - Estimation for parcel " + pid + ": " + estimation);
+    }
+
+    let message = { type: "parcels_assignment_request" };
+    let reply;
+    function wait(ms) {
+        return new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('UPA - Timeout in communicating with other agent.')), ms);
+        });
+    }
+    // Set promise race while asking to have a timout on communication. 
+    try {
+        reply = await Promise.race([wait(2000), client.ask(other_agent_id, message)]);
+    } catch (err) {
+        console.log("UPA - Error in communicating with other agent.");
+        console.log("UPA - Parcel assignments:");
+        for (const [pid, mine] of parcels_agents_assignments) {
+            console.log("Parcel with PID: " + pid + " assigned to me: " + mine);
+        }
+    }
+    console.log("UPA - Reply:");
+    console.log(reply);
+    if (reply) {
+        for (const [pid, estimation] of myself_parcels_estimations) {
+            console.log("UPA - Typeof reply estimations:")
+            console.log(reply.estimation instanceof Map);
+            if (reply.estimations instanceof Map) {
+                if (reply.estimations.has(pid)) {
+                    if (reply.estimations.get(pid) >= estimation) {
+                        parcels_agents_assignments.set(pid, false);
+                    } else {
+                        parcels_agents_assignments.set(pid, true);
+                    }
+                }
+            } else {
+                parcels_agents_assignments = new Map;
+                parcels_agents_assignments.set(pid, true);
+            }
+        }
+
+        await client.say(other_agent_id, {
+            type: "parcel_assignment_update",
+            assignments: parcels_agents_assignments
+        });
+        console.log("UPA - Parcel assignment update sent.");
+    } else {
+        console.log("UPA - Never received a reply to the parcel assignments update request.");
+
+        console.log("UPA - Parcel assignments:");
+        for (const [pid, mine] of parcels_agents_assignments) {
+            console.log("Parcel with PID: " + pid + " assigned to me: " + mine);
+        }
+    }
+}
 
 // Function to produce tha patrolling pivots that will be distributed between agents (CFQ). 
 async function choose_my_fav_quadrants() {
@@ -109,7 +208,7 @@ async function choose_my_fav_quadrants() {
     // Wait until I have available information about myself.
     while (!me.x || !me.y) {
         await new Promise(r => setTimeout(r, 500));
-        console.log("CFQ - Waiting for myself to know where I am.")
+        // console.log("CFQ - Waiting for myself to know where I am.")
     }
     // I select the quadrant where I am and the one near (1 and 4, 2 and 3, look at the report for the map) as e my favourite. 
     let my_fav_quadrants = [];
@@ -127,7 +226,7 @@ async function choose_my_fav_quadrants() {
         my_fav_quadrants[1] = "first";
     }
 
-    console.log("CFQ - My favourite quadrants: ");
+    // console.log("CFQ - My favourite quadrants: ");
     my_fav_quadrants.forEach(quadrant => {
         console.log(quadrant);
     });
@@ -143,7 +242,7 @@ async function deal_patrolling_area() {
     // The other agent hypotetically assigned quadrants are obtained doing set difference with the set of all the four quadrants names. 
     let other_agent_quadrants = quadrants.filter(q => !my_fav_quadrants.includes(q));
     let message = { type: "area_dealing_request", quadrants: other_agent_quadrants };
-    console.log("PAD - Asking other agent for dealing ...");
+     console.log("PAD - Asking other agent for dealing ...");
     var reply;
 
     function wait(ms) {
@@ -151,7 +250,7 @@ async function deal_patrolling_area() {
             setTimeout(() => reject(new Error('timeout succeeded')), ms);
         });
     }
-
+    // Set promise race while askink to have a timout on communication. 
     try {
         reply = await Promise.race([wait(2000), client.ask(other_agent_id, message)]);
     } catch (err) {
@@ -196,7 +295,7 @@ async function notifyParcelSensed(parcel) {
         type: "parcel_sensing_notification",
         parcel: parcel
     });
-    console.log("PSMS - Parcel sensing notification sent.");
+    // console.log("PSMS - Parcel sensing notification sent.");
 }
 
 // Parcel gone message sending (PGMS).
@@ -206,23 +305,23 @@ async function notifyParcelGone(pid) {
         type: "parcel_gone_notification",
         pid: pid
     });
-    console.log("PGMS - Parcel gone notification sent.")
+    // console.log("PGMS - Parcel gone notification sent.")
 }
 
 // Message receiving event management (REM).
 client.onMsg((id, name, message, reply) => {
     // Select as valid messages only those that are from my team mate. 
     if (id === other_agent_id) {
-        console.log("REM - New message received from ", name + ': ', message);
+        // console.log("REM - New message received from ", name + ': ', message);
         // Managing the patrolling are assignment dealing. 
         if (message.type === "area_dealing_request") {
-            console.log("REM - Received request for dealing patrolling area.")
+            // console.log("REM - Received request for dealing patrolling area.")
             // If I already decided my quadrants. 
             if (patrolling_area_assigned) {
                 // Produce other's agent quadrants using set difference. 
                 let other_agent_quadrants = quadrants.filter(q => !my_quadrants.includes(q));
                 let answer = { response: "DENY", quadrants: other_agent_quadrants };
-                console.log("REM - Replying to request for dealing patrolling area with DENY...")
+                // console.log("REM - Replying to request for dealing patrolling area with DENY...")
                 // Reply with denial to other agent. 
                 if (reply)
                     try {
@@ -230,7 +329,7 @@ client.onMsg((id, name, message, reply) => {
                     } catch { (error) => console.error(error) }
             } else { // If I haven't decided yet
                 let answer = { response: "OK" };
-                console.log("REM - Replying to request for dealing patrolling area with OK...")
+                // console.log("REM - Replying to request for dealing patrolling area with OK...")
                 if (reply)
                     try {
                         reply(answer);
@@ -243,16 +342,32 @@ client.onMsg((id, name, message, reply) => {
 
         // Add a new parcel perceived by other agent to my long term parcel DB.
         if (message.type === 'parcel_sensing_notification') {
-            console.log("REM - Received notification of new parcel sensing from other agent.");
+            // console.log("REM - Received notification of new parcel sensing from other agent.");
             long_term_parcel_db.set(message.parcel.id, message.parcel);
-            console.log("REM - Parcel added to long term parcel DB.");
+            // console.log("REM - Parcel added to long term parcel DB.");
         }
 
         // Remove a parcel marked as no more valid by other agent from my long term parcel DB.
         if (message.type === "parcel_gone_notification") {
-            console.log("REM - Received notification of parcel gone from other agent.");
+            // console.log("REM - Received notification of parcel gone from other agent.");
             long_term_parcel_db.delete(message.pid);
-            console.log("REM - Parcel removed from long term parcel DB.");
+            // console.log("REM - Parcel removed from long term parcel DB.");
+        }
+
+        // Send my estimation (for myself) replying to other agent's request. 
+        if (message.type === "parcels_assignment_request") {
+
+            let myself_parcels_estimations = produce_estimations();
+            console.log("REM - Replying with my estimations...")
+            let answer = { estimations: myself_parcels_estimations };
+            if (reply)
+                try { reply(answer) } catch { (error) => console.error(error) }
+        }
+
+        // Update my assignment with fresh updated estimations from other agent. 
+        if (message.type === "parcel_assignment_update") {
+            console.log("REM - Received update of assignments from other agent.");
+            parcels_agents_assignments = message.assignments;
         }
 
     } else {
@@ -277,7 +392,7 @@ function calculate_movement_factor() {
     // current settings developed through testing
 
     movement_factor = movement_time / 500;
-    console.log("MFC - Movement factor: " + movement_factor);
+    // console.log("MFC - Movement factor: " + movement_factor);
     if (movement_factor <= 0.4) {
         carrying_movement_factor = movement_factor + 0.4;
     }
@@ -645,10 +760,10 @@ async function patrolling_case_selection() {
     ///////////////////////////////
 
     while (!patrolling_area_assigned) {
-        console.log("PCS - Waiting for patrolling area assignment to complete.");
+        // console.log("PCS - Waiting for patrolling area assignment to complete.");
         await new Promise(r => setTimeout(r, 500));
     }
-    console.log("PCS - My quadrants: ");
+    // console.log("PCS - My quadrants: ");
     my_quadrants.forEach(quadrant => {
         console.log(quadrant);
     });
@@ -658,11 +773,11 @@ async function patrolling_case_selection() {
         if (last_quadrant == 1) {
             active_sector = first_quadrant_tiles;
             last_quadrant = 0;
-            console.log("PCS - Active sector: first quadrant.");
+            // console.log("PCS - Active sector: first quadrant.");
         } else if (last_quadrant == 0) {
             active_sector = fourth_quadrant_tiles;
             last_quadrant = 1;
-            console.log("PCS - Active sector: fourth quadrant.");
+            // console.log("PCS - Active sector: fourth quadrant.");
         } else {
             let first_quadrant_distance = calculate_distance(me.x, me.y, first_quadrant[0], first_quadrant[1]);
             let fourth_quadrant_distance = calculate_distance(me.x, me.y, fourth_quadrant[0], fourth_quadrant[1]);
@@ -670,11 +785,11 @@ async function patrolling_case_selection() {
             if (first_quadrant_distance >= fourth_quadrant_distance) {
                 active_sector = fourth_quadrant_tiles;
                 last_quadrant = 1;
-                console.log("PCS - Active sector: fourth quadrant.");
+                // console.log("PCS - Active sector: fourth quadrant.");
             } else {
                 active_sector = first_quadrant_tiles;
                 last_quadrant = 0;
-                console.log("PCS - Active sector: first quadrant.");
+                // console.log("PCS - Active sector: first quadrant.");
             }
         }
 
@@ -683,11 +798,11 @@ async function patrolling_case_selection() {
         if (last_quadrant == 1) {
             active_sector = second_quadrant_tiles;
             last_quadrant = 0;
-            console.log("PCS - Active sector: second quadrant.");
+            // console.log("PCS - Active sector: second quadrant.");
         } else if (last_quadrant == 0) {
             active_sector = third_quadrant_tiles;
             last_quadrant = 1;
-            console.log("PCS - Active sector: third quadrant.");
+            // console.log("PCS - Active sector: third quadrant.");
         } else {
             let second_quadrant_distance = calculate_distance(me.x, me.y, second_quadrant[0], second_quadrant[1]);
             let third_quadrant_distance = calculate_distance(me.x, me.y, third_quadrant[0], third_quadrant[1]);
@@ -695,11 +810,11 @@ async function patrolling_case_selection() {
             if (second_quadrant_distance >= third_quadrant_distance) {
                 active_sector = third_quadrant_tiles;
                 last_quadrant = 1;
-                console.log("PCS - Active sector: third quadrant.");
+                // console.log("PCS - Active sector: third quadrant.");
             } else {
                 active_sector = second_quadrant_tiles;
                 last_quadrant = 0;
-                console.log("PCS - Active sector: second quadrant.");
+                // console.log("PCS - Active sector: second quadrant.");
             }
         }
     }
@@ -732,7 +847,7 @@ async function patrolling_case_selection() {
         }
     }
     patrolling_area_counter++;
-    console.log("PCS - Patrolling intention that is pushed is: ");
+    // console.log("PCS - Patrolling intention that is pushed is: ");
     console.log(idle_option);
 
     return idle_option;
@@ -778,7 +893,6 @@ function go_to_memorized_parcel() {
             }
         });
 
-
         let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
         let parcel_ratio = parcel.reward - Math.round((total_distance * decading_factor) * movement_factor);
         if (highest_ratio == null) {
@@ -794,7 +908,7 @@ function go_to_memorized_parcel() {
     // Check if parcel is worth to be picked up -> If not go normal patrolling
 
     if (highest_ratio > 0) {
-        console.log("GTMP - The best parcel to try to pickup from the long term parcel DB is: ");
+        // console.log("GTMP - The best parcel to try to pickup from the long term parcel DB is: ");
         console.log(best_parcel);
 
         var option = ['patrolling', best_parcel.x, best_parcel.y];
@@ -872,8 +986,8 @@ function option_choosing_function() {
 
     /// 0.1 Finding the nearest delivery tile respect to the current position of the agent. 
 
-    //console.log("OCF - Delivery tiles DB length:");
-    //console.log(delivery_tiles_database.length);
+    // console.log("OCF - Delivery tiles DB length:");
+    // console.log(delivery_tiles_database.length);
 
     var direct_min_del_tile_distance = null;
     var agent_nearest_delivery_tile;
@@ -890,12 +1004,9 @@ function option_choosing_function() {
         }
     });
 
-
-
     /// 0.2 Calculate the reward/distance ratio for each parcel, finding out the one with the highest. 
     let best_ratio_parcel;
     let best_ratio = null;
-
 
     // Check that into the perceived parcels there are not only those I am carrying, otherwise it is useless to search for best ratio parcel.
     if (me.parcel_count < parcel_db.size) {
@@ -964,7 +1075,7 @@ function option_choosing_function() {
 
     //TODO: Check behaviour on challenge_23 (maybe if cases for infinite and degredation with degredation still using max_parcels)
     if (me.parcel_count >= max_allowed_parcels) {
-        console.log("OCF - Maximum number of carried parcels reached. Let's go to delivery.")
+        // console.log("OCF - Maximum number of carried parcels reached. Let's go to delivery.")
         best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
     }
 
@@ -975,7 +1086,7 @@ function option_choosing_function() {
         /// Case 2.1: There is no degradation. 
 
         if (parcel_decading_interval == 'infinite') {
-            console.log("OCF - No degradation perceived.");
+            // console.log("OCF - No degradation perceived.");
             // console.log("OCF - The Agent went patrolling " + patrolling_moves_counter + " times. The Patrolling Treshold is: " + patrolling_moves_treshold);
 
             // Check if a delivery_tile is near by
@@ -1026,7 +1137,7 @@ function option_choosing_function() {
         /// Case 2.2: There is degradation. 
 
         else {
-            console.log("OCF - Degradation perceived.");
+            // console.log("OCF - Degradation perceived.");
 
             /// Case 2.2.1 If no parcels are currently carried, go to pickup the parcel with the best reward/distnace ratio. 
 
@@ -1099,8 +1210,8 @@ function option_choosing_function() {
                     }
                 }
 
-                //console.log("OCF - Parcel DB no pickup size:");
-                //console.log(my_parcels_db_no_pickup.size);
+                // console.log("OCF - Parcel DB no pickup size:");
+                // console.log(my_parcels_db_no_pickup.size);
 
                 /// 2.2.4.2 Calculate the agent final reward (sum) in case of direct delivery (no picking up new parcels).
 
@@ -1112,8 +1223,8 @@ function option_choosing_function() {
                     agent_total_final_reward_no_pickup += final_reward;
                 }
 
-                //console.log("OCF - Agent final reward if no pickup:");
-                //console.log(agent_total_final_reward_no_pickup);
+                // console.log("OCF - Agent final reward if no pickup:");
+                // console.log(agent_total_final_reward_no_pickup);
 
                 /// 2.2.4.3 The loop to estimate for each perceived parcel the final reward in case of picking up 
 
@@ -1151,9 +1262,9 @@ function option_choosing_function() {
                         for (const [pid, parcel] of parcel_db.entries()) {
                             if (parcel.carriedBy == me.id) {
                                 let final_reward = parcel.reward - Math.round((parcel_total_distance * decading_factor) * carrying_movement_factor);
-                                //console.log("OCF - Decading factor: " + decading_factor);
-                                //console.log("OCF - Parcel total distance: " + parcel_total_distance);
-                                //console.log("OCF - Final carried parcel score if pickup: " + (final_reward + me.score));
+                                // console.log("OCF - Decading factor: " + decading_factor);
+                                // console.log("OCF - Parcel total distance: " + parcel_total_distance);
+                                // console.log("OCF - Final carried parcel score if pickup: " + (final_reward + me.score));
                                 if (final_reward < 0)
                                     final_reward = 0;
                                 my_parcels_db_pickup.set(parcel, final_reward);
@@ -1401,16 +1512,16 @@ function clean_ltpdb() {
             if (pdb_parcel.carriedBy != null) {
                 long_term_parcel_db.delete(pid);
                 notifyParcelGone(pid);
-                console.log("CLTPDB - Removed parcel " + parcel + " because now it is carried by someone.");
+                // console.log("CLTPDB - Removed parcel " + parcel + " because now it is carried by someone.");
             } else {
                 long_term_parcel_db.set(pid, pdb_parcel);
-                console.log("CLTPDB - Updated parcel " + parcel);
+                // console.log("CLTPDB - Updated parcel " + parcel.id);
             }
         } else {
             let distance_me_parcel = calculate_distance(parcel.x, parcel.y, me.x, me.y);
             if (distance_me_parcel < parcel_sensing_distance) {
                 long_term_parcel_db.delete(pid);
-                console.log("CLTPDB - Removed parcel " + pid + " because it should be here but it's not anymore.");
+                // console.log("CLTPDB - Removed parcel " + pid + " because it should be here but it's not anymore.");
                 // console.log("CLTPDB - distance me/parcel: " + distance_me_parcel);
                 // console.log("CLTPDB - distance sensing: " + parcel_sensing_distance);
             }
@@ -1510,7 +1621,7 @@ class IntentionRevision {
             await deal_patrolling_area();
         }
 
-        console.log("IRL - Patrolling area assigned is: " + patrolling_area_assigned);
+        // console.log("IRL - Patrolling area assigned is: " + patrolling_area_assigned);
         while (true) {
             if (game_initialized && patrolling_area_assigned) { // Check if the game has been initialized. 
                 if (parcel_decading_interval != "infinite") {
@@ -1521,12 +1632,13 @@ class IntentionRevision {
                     }
                 }
                 if (this.intention_queue.length == 0) {  // If all the intentions has been consumed. 
-                    myAgent.push(await option_choosing_function()); // Produce the next best option. 
+                    let new_intention = await option_choosing_function();
+                    myAgent.push(new_intention); // Produce the next best option. 
                 } else {
-                    console.log("IRL - Intention queue length: " + this.intention_queue.length);
-                    console.log("IRL - Intention queue:");
+                    // console.log("IRL - Intention queue length: " + this.intention_queue.length);
+                    // console.log("IRL - Intention queue:");
                     this.#intention_queue.forEach(intention => {
-                        console.log(intention.predicate);
+                        // console.log(intention.predicate);
                     });
 
                     //TODO: Check again if enough time 
@@ -1577,6 +1689,10 @@ class IntentionRevision {
 
                     // After intention completation, remove the intention from the queue. 
                     this.intention_queue.shift();
+
+                    // Update the parcels assignment. 
+                    if (long_term_parcel_db.size > 0)
+                        await update_parcel_assignment();
                 }
 
             } else { // If the game hasn't been initialized yet
@@ -1603,12 +1719,12 @@ class IntentionRevisionQueue extends IntentionRevision {
 
         // No previous intention in IQ -> push new Intention anyway
         if (this.intention_queue.length == 0) {
-            console.log("IRQ - Case 1");
+            // console.log("IRQ - Case 1");
             this.intention_queue.push(intention);
         }
         // Agent wants to deliver carried parcels but senses a benefitial parcel on the way to delivery tile
         else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' && intention.predicate[0] === 'go_pick_up')) {
-            console.log("IRQ - Case 2");
+            // console.log("IRQ - Case 2");
 
             if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
                 return; // Intention is already queued.
@@ -1620,7 +1736,7 @@ class IntentionRevisionQueue extends IntentionRevision {
         // Agent is currently patrolling and senses a new parcel
         else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'patrolling' && intention.predicate[0] === 'go_pick_up')) {
 
-            console.log("IRQ - Case 3");
+            // console.log("IRQ - Case 3");
             this.intention_queue[0].stop();
             this.intention_queue.shift();
             this.intention_queue.push(intention);
@@ -1630,12 +1746,12 @@ class IntentionRevisionQueue extends IntentionRevision {
         else if (this.intention_queue.length > 0 && intention.predicate[0] == 'go_pick_up') {
 
             if (this.intention_queue[0].predicate[0] === 'go_put_down') {
-                console.log("IRQ - Case 4.1 -> IRQ - Case 2 already takes care of Intention Revision");
+                // console.log("IRQ - Case 4.1 -> IRQ - Case 2 already takes care of Intention Revision");
                 return;
             }
 
             if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' '))) {
-                console.log("IRQ - Case 4.2 -> Intention is already queued");
+                // console.log("IRQ - Case 4.2 -> Intention is already queued");
                 return; // Intention is already queued.
             }
 
@@ -1650,11 +1766,11 @@ class IntentionRevisionQueue extends IntentionRevision {
                     intention_revision_reset();
                 }
                 else if (priority == intention.predicate[3]) {
-                    console.log("IRQ - Case 4.3.1 -> IQ Size 1 - Reordering is needed");
+                    // console.log("IRQ - Case 4.3.1 -> IQ Size 1 - Reordering is needed");
                     this.intention_queue[0].stop();
                     this.intention_queue.unshift(intention);
                 } else {
-                    console.log("IRQ - Case 4.3.2 -> IQ Size 1 - No new order is needed!");
+                    // console.log("IRQ - Case 4.3.2 -> IQ Size 1 - No new order is needed!");
                     this.intention_queue.push(intention);
                 }
             }
@@ -1668,12 +1784,12 @@ class IntentionRevisionQueue extends IntentionRevision {
                     intention_revision_reset();
                 }
                 else if (priority_1 == intention.predicate[3]) {
-                    console.log("IRQ - Case 4.4.1 -> IQ Size 2 - New Intention is BEST Intention");
+                    // console.log("IRQ - Case 4.4.1 -> IQ Size 2 - New Intention is BEST Intention");
                     this.intention_queue[0].stop();
                     this.intention_queue.unshift(intention);
                     this.intention_queue.pop();
                 } else {
-                    console.log("IRQ - Case 4.4.2 -> IQ Size 2 - New Intention is NOT Best Intention");
+                    // console.log("IRQ - Case 4.4.2 -> IQ Size 2 - New Intention is NOT Best Intention");
 
                     let priority_2 = ordering_IntentionQueue(intention, this.intention_queue[1]);
 
@@ -1681,7 +1797,7 @@ class IntentionRevisionQueue extends IntentionRevision {
                         console.log("ERROR CAUGHT!  IQ Size 2 - Prio 2")
                         intention_revision_reset();
                     } else if (priority_2 == intention.predicate[3]) {
-                        console.log("IRQ - Case 4.5.1 -> IQ Size 2 - New Intention is SECOND best Intention");
+                        // console.log("IRQ - Case 4.5.1 -> IQ Size 2 - New Intention is SECOND best Intention");
                         this.intention_queue.pop();
                         this.intention_queue.push(intention);
                     } else {

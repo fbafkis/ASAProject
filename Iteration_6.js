@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijg1ODhjNjY4MDM4IiwibmFtZSI6ImRvZmIiLCJpYXQiOjE2OTMyMDk5MzZ9.7HAETpezOV1gvytGwTVb6bSP5OKH-90esIYElI_v8hI')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImEyMjIzOGVjYjJlIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNjc3NTg2fQ.2WcpdlmxiQCmoD3ts2fAQeFuroeeIx9yqBlJXGimpxo')
 
 /// Variables and constants.
 
