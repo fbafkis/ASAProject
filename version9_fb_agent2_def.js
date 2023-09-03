@@ -2,10 +2,10 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNiMmViMjU0ZDIzIiwibmFtZSI6ImRvZmIyIiwiaWF0IjoxNjkzNjc5MzAyfQ.hHVOSKsSX3TH-cQ6-57N8Vd6zcZ6Zfc0rpw69xj7RVs')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijg4YTJiNjE5MmZhIiwibmFtZSI6ImRvZmIyIiwiaWF0IjoxNjkzNzI1Nzk4fQ.yvCf9pvzlILkfShM62ZRZwM-3cPUnhRHxMxwbvJgXbo')
 
 /// The other agent id. 
-var other_agent_id = "8ecb2eb254d";
+var other_agent_id = "88a2b6192fa";
 
 /// Variables and constants.
 
@@ -99,8 +99,6 @@ var quadrants_retrieved = false;
 var last_quadrant = 0;
 // The parcel assignment DB. 
 var parcels_agents_assignments = new Map;
-
-
 
 
 /// Functions.
@@ -244,7 +242,7 @@ async function deal_patrolling_area() {
     // The other agent hypotetically assigned quadrants are obtained doing set difference with the set of all the four quadrants names. 
     let other_agent_quadrants = quadrants.filter(q => !my_fav_quadrants.includes(q));
     let message = { type: "area_dealing_request", quadrants: other_agent_quadrants };
-     console.log("PAD - Asking other agent for dealing ...");
+    console.log("PAD - Asking other agent for dealing ...");
     var reply;
 
     function wait(ms) {
@@ -713,9 +711,9 @@ function intention_revision_reset() {
     console.log("The Exception gets now processed!");
     console.log("The Agent is carrying " + me.parcel_count + " parcels");
     console.log("The Current Intentions are: ");
-    myAgent.intention_queue.forEach(intention => {
-        console.log(intention.predicate);
-    });
+    // myAgent.intention_queue.forEach(intention => {
+    //      console.log(intention.predicate);
+    // });
 
     if (me.parcel_count == 0) {
         // Set IQ Length to 0
@@ -877,7 +875,15 @@ function go_to_memorized_parcel() {
 
     let highest_ratio = null;
     let best_parcel;
+    let suitable_parcels_counter = 0;
+    // Count how many suitable parcels there are. 
+    for (const [pid, suitable] of parcels_agents_assignments) {
+        if (suitable == true) {
+            suitable_parcels_counter++;
+        }
+    }
 
+    // Analyze all the parcels in the parcel DB. 
     for (const [pid, parcel] of long_term_parcel_db) {
 
         var direct_min_del_tile_distance = null;
@@ -896,15 +902,33 @@ function go_to_memorized_parcel() {
         });
 
 
-        let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
-        let parcel_ratio = parcel.reward - Math.round((total_distance * decading_factor) * movement_factor);
-        if (highest_ratio == null) {
-            highest_ratio = parcel_ratio;
-            best_parcel = parcel;
-        } else {
-            if (parcel_ratio > highest_ratio)
+        if (suitable_parcels_counter > 0) { // If inside the long term parcel DB there are more than one suitable parcels, I can choose the best one among them. 
+            if (parcels_agents_assignments.get(pid) == true) {
+                let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
+                let parcel_ratio = parcel.reward - Math.round((total_distance * decading_factor) * movement_factor);
+                if (highest_ratio == null) {
+                    highest_ratio = parcel_ratio;
+                    best_parcel = parcel;
+                } else {
+                    if (parcel_ratio > highest_ratio)
+                        highest_ratio = parcel_ratio;
+                    best_parcel = parcel;
+                }
+            } else {
+                console.log("GTMP - Skipping the parcel " + pid + " because not suitable for myself.")
+            }
+        } else if (suitable_parcels_counter == 0) { // If there is no suitable parcels into the long term DB, go for a non suitable one (better than nothing).
+
+            let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
+            let parcel_ratio = parcel.reward - Math.round((total_distance * decading_factor) * movement_factor);
+            if (highest_ratio == null) {
                 highest_ratio = parcel_ratio;
-            best_parcel = parcel;
+                best_parcel = parcel;
+            } else {
+                if (parcel_ratio > highest_ratio)
+                    highest_ratio = parcel_ratio;
+                best_parcel = parcel;
+            }
         }
     }
 
@@ -912,7 +936,7 @@ function go_to_memorized_parcel() {
 
     if (highest_ratio > 0) {
         // console.log("GTMP - The best parcel to try to pickup from the long term parcel DB is: ");
-        console.log(best_parcel);
+        // console.log(best_parcel);
 
         var option = ['patrolling', best_parcel.x, best_parcel.y];
         return option;
@@ -1007,12 +1031,9 @@ function option_choosing_function() {
         }
     });
 
-
-
     /// 0.2 Calculate the reward/distance ratio for each parcel, finding out the one with the highest. 
     let best_ratio_parcel;
     let best_ratio = null;
-
 
     // Check that into the perceived parcels there are not only those I am carrying, otherwise it is useless to search for best ratio parcel.
     if (me.parcel_count < parcel_db.size) {
@@ -1416,7 +1437,7 @@ function option_choosing_function() {
         }
     }
 
-    console.log("OCF - The best option produced by the reasoning function is:");
+    // console.log("OCF - The best option produced by the reasoning function is:");
     console.log(best_option);
     // Returning the finally produced option. 
     return best_option;

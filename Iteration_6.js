@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImEyMjIzOGVjYjJlIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNjc3NTg2fQ.2WcpdlmxiQCmoD3ts2fAQeFuroeeIx9yqBlJXGimpxo')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijg4OGEyYjYxOTJmIiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNzI1NzgxfQ.3oW5aG1GHnpfx5Zvc83gO3q04kyzqKuW-6OoHMKwY2U')
 
 /// Variables and constants.
 
@@ -81,7 +81,6 @@ var patrolling_distance_between_points = 5;
 var patrolling_init = false;
 
 //TODO: Delete:
-var patrolling_history = [];
 
 /// Functions.
 
@@ -539,7 +538,6 @@ function patrolling_case_selection() {
       }
     }       
     }
-    patrolling_history.push(idle_option_2);
     patrolling_area_counter++;
     console.log("Patrolling intention that is pushed is: ");
     console.log(idle_option);
@@ -673,14 +671,7 @@ function best_option_memorized_parcel(){
 
 function option_choosing_function() {
 
-    //TODO: delete
-    if (me.score >= 300 && me.score < 450) {
-        console.log(patrolling_history);
-        console.log("0");
-        console.log(patrolling_history[0]);
-        console.log("1");
-        console.log(patrolling_history[1]);
-    }
+
 
     /// Variables declaration.
 
