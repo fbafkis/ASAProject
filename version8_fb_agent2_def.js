@@ -2,10 +2,11 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijg2NDY4YWU4M2IzIiwibmFtZSI6ImRvZmIyIiwiaWF0IjoxNjkzNzU3MDc4fQ.t4TJ8GFQXrEPgyen6hjDF3sLHYOLzgmOum4GrtjlPUA')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjQ4NGE0OWVlNmU2IiwibmFtZSI6ImRvZmIyIiwiaWF0IjoxNjkzNzUwNzQ2fQ.UFYLU-YDaLGqskbk--0L-9O9TSzfPByAG2NZy21vgOA')
 
 /// The other agent id. 
-var other_agent_id = "37848286468";
+var other_agent_id = "d3484a49ee6";
+
 
 /// Variables and constants.
 
@@ -24,6 +25,7 @@ const map = {
         return this.tiles.get(x + 1000 * y)
     }
 };
+
 // map after redifining borders
 const cleaned_map = {
     width: undefined,
@@ -37,6 +39,7 @@ const cleaned_map = {
         return this.tiles.get(x + 1000 * y)
     }
 }
+
 // The field that keeps trace of the parcels currently carried by myself.
 me.parcel_count;
 // The decading interval of the parcels. 
@@ -55,6 +58,8 @@ var delivery_tiles_database = [];
 var patrolling_area_counter = 1;
 // A flag to ensure that data from the game has correctly retrieved. 
 var game_initialized = false;
+// game and patrolling points are initalized
+var everything_initialized = false;
 // Counter to keep trace of the sequential number of patrolling moves pushed.
 var patrolling_moves_counter = 0;
 // Limit of patrolling moves to execute while I am carrying some parcels before to force the delivery. 
@@ -126,6 +131,7 @@ var reduced_patrolling = false;
 // Function to produce tha patrolling pivots that will be distributed between agents (CFQ). 
 async function choose_my_fav_quadrants() {
 
+console.log("test5555");
 
     // I select the quadrant where I am and the one near (1 and 4, 2 and 3, look at the report for the map) as e my favourite. 
     let my_fav_quadrants = [];
@@ -489,45 +495,42 @@ async function select_patrolling_points() {
         for (let j = 0; j < map.height; j++) {
             let considered_tile = map.xy(i, j);
             if ((considered_tile == undefined)) {
-               let x_y = [];
-                x_y.push(i);
-                x_y.push(j);
-                let test = {x: i, y: j};
-                non_valid_tiles.set(i + 1000 * j, test)
+               let coordinates_ct = {x: i, y: j};
+                non_valid_tiles.set(i + 1000 * j, coordinates_ct)
             } else { 
                 continue;  
             }
         }
     }
 
-    console.log(non_valid_tiles);
+    //  console.log(non_valid_tiles);
  
     for (let z = 0; z < map.width; z++) {
-        console.log("Width = " + map.width + " z = " + z);
+        //        console.log("Width = " + map.width + " z = " + z);
     let counter = 0;
     let coordinates = non_valid_tiles.entries().next().value;
     let x_coordinate = coordinates[1].x;
-    console.log("X-Coordinate is:" + x_coordinate);
+    //console.log("X-Coordinate is:" + x_coordinate);
   
     //console.log("Counter: " + counter);
     for (const entry of non_valid_tiles) {
         if (entry[1].x == x_coordinate) {
-            console.log("Entry coordinates: " + entry[1].x + " " + entry[1].y);
+            //  console.log("Entry coordinates: " + entry[1].x + " " + entry[1].y);
             counter++;
-            console.log("Counter: " + counter);
+            //   console.log("Counter: " + counter);
         }
     }
 
-    console.log("Comparision! Counter: " + counter + " Map height " + map.height);
+    //  console.log("Comparision! Counter: " + counter + " Map height " + map.height);
     if (counter < map.height) {
-        console.log("Entry coordinates to be deleted " + x_coordinate + " - Counter: " + counter);
+        //        console.log("Entry coordinates to be deleted " + x_coordinate + " - Counter: " + counter);
         for (let j = 0; j < map.height; j++) {
         non_valid_tiles.delete(x_coordinate + 1000 * j);
     }
 }
-    console.log("Comparision! Counter: " + counter + " Map height " + map.height);
+    //   console.log("Comparision! Counter: " + counter + " Map height " + map.height);
     if (counter == map.height) {
-        console.log("Entry coordinates to be deleted " + x_coordinate + " - Counter: " + counter); 
+        //     console.log("Entry coordinates to be deleted " + x_coordinate + " - Counter: " + counter); 
         non_valid_tiles_cleaned_x.push(x_coordinate);
         for (let j = 0; j < map.height; j++) {
         non_valid_tiles.delete(x_coordinate + 1000 * j);
@@ -535,25 +538,25 @@ async function select_patrolling_points() {
 }
 
     if (x_coordinate == (map.width - 1)) {
-        console.log("All elements done!");
+        //   console.log("All elements done!");
         break;
     }
     }
 
-console.log("final Map!");
-console.log(non_valid_tiles_cleaned_x);
+//console.log("final Map!");
+//console.log(non_valid_tiles_cleaned_x);
 
 var cleaned_map_width_min = null;
 var cleaned_map_width_max = null;
-console.log(me);
+//console.log(me);
 
 
 for(let i = 0; i < non_valid_tiles_cleaned_x.length; i++) {
-    console.log("Element: " + non_valid_tiles_cleaned_x[i]);
+    /*   console.log("Element: " + non_valid_tiles_cleaned_x[i]);
     console.log("Me X: " + me.x);
     console.log("Max: " + cleaned_map_width_max);
     console.log("Min: " + cleaned_map_width_min);
-
+*/
     if (cleaned_map_width_max == null && me.x < non_valid_tiles_cleaned_x[i]) {
         cleaned_map_width_max = non_valid_tiles_cleaned_x[i];
         console.log("test1");
@@ -569,15 +572,15 @@ for(let i = 0; i < non_valid_tiles_cleaned_x.length; i++) {
     }
 }
 
-console.log("New cleaned map boundaries: ");
+/*console.log("New cleaned map boundaries: ");
 console.log(cleaned_map_width_min);
 console.log(cleaned_map_width_max);
-
+*/
 if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
     new_map_borders = true;
     if (cleaned_map_width_max == null) {
     cleaned_map.width = (map.width - cleaned_map_width_min - 1);
-    console.log("New Width: " + cleaned_map.width);
+    // console.log("New Width: " + cleaned_map.width);
     cleaned_map.height = map.height;
 
         // Add  tiles to cleaned_map.
@@ -588,7 +591,7 @@ if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
         }
     } else if (cleaned_map_width_min == null) {
         cleaned_map.width = (cleaned_map_width_max - 1);
-        console.log("New Width: " + cleaned_map.width);
+        //  console.log("New Width: " + cleaned_map.width);
         cleaned_map.height = map.height;
     
             // Add  tiles to cleaned_map.
@@ -600,7 +603,7 @@ if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
     } else {
     cleaned_map.width = (cleaned_map_width_max - cleaned_map_width_min - 1);
  
-    console.log("New Width: " + cleaned_map.width);
+    //  console.log("New Width: " + cleaned_map.width);
     cleaned_map.height = map.height;
 
         // Add  tiles to cleaned_map.
@@ -677,7 +680,7 @@ for (const tile of cleaned_map.tiles.values()) {
             first_quadrant.push(map.height / 2 - 1);
             second_quadrant.push(map.width / 2 - 1);
             second_quadrant.push(map.height / 2);
-            third_quadrant.push(map.width / 2 );
+            third_quadrant.push(map.width / 2);
             third_quadrant.push(map.height / 2);
             fourth_quadrant.push(map.width / 2);
             fourth_quadrant.push(map.height / 2 - 1);
@@ -687,7 +690,7 @@ for (const tile of cleaned_map.tiles.values()) {
             first_quadrant.push((map.height + 1) / 2 - 1);
             second_quadrant.push(map.width / 2 - 1);
             second_quadrant.push((map.height + 1) / 2);
-            third_quadrant.push(map.width / 2 );
+            third_quadrant.push(map.width / 2);
             third_quadrant.push((map.height + 1) / 2);
             fourth_quadrant.push(map.width / 2);
             fourth_quadrant.push((map.height + 1) / 2 - 1);
@@ -700,7 +703,7 @@ for (const tile of cleaned_map.tiles.values()) {
         first_quadrant.push(map.height / 2 - 1);
         second_quadrant.push((map.width + 1) / 2 - 1);
         second_quadrant.push(map.height / 2);
-        third_quadrant.push((map.width + 1) / 2 );
+        third_quadrant.push((map.width + 1) / 2);
         third_quadrant.push(map.height / 2);
         fourth_quadrant.push((map.width + 1) / 2);
         fourth_quadrant.push(map.height / 2 - 1);
@@ -710,7 +713,7 @@ for (const tile of cleaned_map.tiles.values()) {
         first_quadrant.push((map.height + 1) / 2 - 1);
         second_quadrant.push((map.width + 1) / 2 - 1);
         second_quadrant.push((map.height + 1) / 2);
-        third_quadrant.push((map.width + 1) / 2 );
+        third_quadrant.push((map.width + 1) / 2);
         third_quadrant.push((map.height + 1) / 2);
         fourth_quadrant.push((map.width + 1) / 2);
         fourth_quadrant.push((map.height + 1) / 2 - 1);
@@ -911,6 +914,7 @@ async function patrolling_case_selection() {
           console.log("PCS - Warning -> impossible case!");
       }
 }
+
  
 
     if (patrolling_init == false) {
@@ -941,6 +945,8 @@ async function patrolling_case_selection() {
 
     return idle_option; 
 }
+
+
 // Function to set the agent going to the (eventually present)best parcel into the long term parcel DB (GTMP). 
 
 function go_to_memorized_parcel() {
@@ -1050,6 +1056,9 @@ function best_option_memorized_parcel() {
 // Option Choosing Function (OCF). The core function that provides always the best option for the current situation. 
 
 function option_choosing_function() {
+
+
+
 
 
     /// Variables declaration.
@@ -1629,6 +1638,7 @@ function clean_ltpdb() {
     }
 }
 
+
 // Agent sensing management (not used in this version).
 
 /*
@@ -2159,5 +2169,9 @@ planLibrary.push(GoPickUp)
 planLibrary.push(OptimalPathMove)
 planLibrary.push(GoPutDown)
 planLibrary.push(Patrolling)
+
+
+
+
 
 

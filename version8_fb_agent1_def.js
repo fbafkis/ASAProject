@@ -2,10 +2,11 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjM3ODQ4Mjg2NDY4IiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNzU2Njc2fQ.9xXvKCkaxcA7-xogCcnzrKgaP_sZtidma63xASO6ZD0')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImQzNDg0YTQ5ZWU2IiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNzUwNTYyfQ.AltsF_Ycd3pLhxNMIIAddALeMARBLiCR-Qg2zxaOyPI')
 
 /// The other agent id. 
-var other_agent_id = "86468ae83b3";
+var other_agent_id = "484a49ee6e6";
+
 
 /// Variables and constants.
 
@@ -669,7 +670,7 @@ for (const tile of cleaned_map.tiles.values()) {
             first_quadrant.push(map.height / 2 - 1);
             second_quadrant.push(map.width / 2 - 1);
             second_quadrant.push(map.height / 2);
-            third_quadrant.push(map.width / 2 );
+            third_quadrant.push(map.width / 2);
             third_quadrant.push(map.height / 2);
             fourth_quadrant.push(map.width / 2);
             fourth_quadrant.push(map.height / 2 - 1);
@@ -679,7 +680,7 @@ for (const tile of cleaned_map.tiles.values()) {
             first_quadrant.push((map.height + 1) / 2 - 1);
             second_quadrant.push(map.width / 2 - 1);
             second_quadrant.push((map.height + 1) / 2);
-            third_quadrant.push(map.width / 2 );
+            third_quadrant.push(map.width / 2);
             third_quadrant.push((map.height + 1) / 2);
             fourth_quadrant.push(map.width / 2);
             fourth_quadrant.push((map.height + 1) / 2 - 1);
@@ -692,7 +693,7 @@ for (const tile of cleaned_map.tiles.values()) {
         first_quadrant.push(map.height / 2 - 1);
         second_quadrant.push((map.width + 1) / 2 - 1);
         second_quadrant.push(map.height / 2);
-        third_quadrant.push((map.width + 1) / 2 );
+        third_quadrant.push((map.width + 1) / 2);
         third_quadrant.push(map.height / 2);
         fourth_quadrant.push((map.width + 1) / 2);
         fourth_quadrant.push(map.height / 2 - 1);
@@ -702,7 +703,7 @@ for (const tile of cleaned_map.tiles.values()) {
         first_quadrant.push((map.height + 1) / 2 - 1);
         second_quadrant.push((map.width + 1) / 2 - 1);
         second_quadrant.push((map.height + 1) / 2);
-        third_quadrant.push((map.width + 1) / 2 );
+        third_quadrant.push((map.width + 1) / 2);
         third_quadrant.push((map.height + 1) / 2);
         fourth_quadrant.push((map.width + 1) / 2);
         fourth_quadrant.push((map.height + 1) / 2 - 1);
@@ -824,6 +825,7 @@ async function patrolling_case_selection() {
     let selected_tile = null;
     let patrolling_point_distance = null;
 
+///////////////////////////////
     
 if (reduced_patrolling == false) {
     while (!patrolling_area_assigned) {
@@ -1044,6 +1046,9 @@ function best_option_memorized_parcel() {
 // Option Choosing Function (OCF). The core function that provides always the best option for the current situation. 
 
 function option_choosing_function() {
+
+
+
 
 
     /// Variables declaration.
