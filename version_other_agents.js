@@ -79,7 +79,14 @@ var last_patrolling_point = [];
 var patrolling_distance_between_points = 5;
 // If agent has already patrolled or not
 var patrolling_init = false;
+// Distance on which another agent which occupies a delivery tile is sensed
+var reacting_distance = 3;
+// currently occupied delivery tile
+var ocupied_dt = [];
 
+var checked_tile = [];
+
+var checked_tile_counter = 0;
 
 /// Functions.
 
@@ -268,17 +275,11 @@ client.onTile((x, y, delivery) => {
  */
 const parcel_db = new Map()
 
-// Data structures for patrolling strategy. 
-
+// The agent DB where all the met agents are stored. 
 /**
- * @type {Map<string,[{x_coordinate}]}
+ * @type {Map<string,[{id,name,x,y,score}]}
  */
-const patrolling_x_coordinates = new Map()
-
-/**
- * @type {Map<string,[{y_coordinate}]}
- */
-const patrolling_y_coordinates = new Map()
+const agent_db = new Map()
 
 // Function that selects the pivot points on the map to perform patrolling. 
 
@@ -354,46 +355,8 @@ function select_patrolling_points() {
             fourth_quadrant_tiles.push(tile);
         }
     }
-   
-
-
- /*   let target_x;
-    let target_y;
-    let valid_tile;
-
-    target_y = Math.floor(map.height / 3) + 1;
-    target_x = Math.floor(map.width / 3) + 1;
-
-    //TODO: If patrolling is specified - check if tile is undefined
-
-    patrolling_x_coordinates.set("1", target_x);
-    patrolling_y_coordinates.set("1", target_y);
-
-
-    patrolling_x_coordinates.set("2", (target_x));
-    patrolling_y_coordinates.set("2", (target_y * 2));
-
-    patrolling_x_coordinates.set("3", (target_x * 2));
-    patrolling_y_coordinates.set("3", (target_y * 2));
-
-    patrolling_x_coordinates.set("4", (target_x * 2));
-    patrolling_y_coordinates.set("4", (target_y));
-
-    return; */
 }
 
-// TODO: is it used for somthing? 
-
-function check_patrolling_point(x, y) {
-    var valid_tile = false;
-    for (const tile of map.tiles.values()) {
-        if (tile.x == x && tile.y == y) {
-            valid_tile == true;
-        }
-    }
-
-    return valid_tile;
-}
 
 // Function for comparing to intentions and returning the better option
 function ordering_IntentionQueue(latest, old) {
@@ -749,7 +712,7 @@ function option_choosing_function() {
 
     /// Case 1.1: Maximum number of carried parcels reached for infinite parcel degredation
 
-    //TODO: Check behaviour on challenge_23 (maybe if cases for infinite and degredation with degredation still using max_parcels)
+   
     if ((me.parcel_count >= max_allowed_parcels) && (parcel_decading_interval == 'infinite')) {
         console.log("OCF - 1.1 - Maximum number of carried parcels reached. Let's go to delivery.")
         best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
@@ -857,7 +820,12 @@ function option_choosing_function() {
             else if (me.parcel_count == 0 && me.parcel_count == parcel_db.size) {
                 if (long_term_parcel_db.size == 0) { // If no parcels inside the long term parcel DB
                     best_option = patrolling_case_selection();
-                   } else { // If there is at least one parcel inside the long term parcel DB, exploit it. 
+                  //  patrolling_area_counter++;
+                    console.log("OCF - Patrolling moves counter:");
+                    console.log(patrolling_moves_counter);
+                    console.log("OCF - Patrolling moves treshold:");
+                    console.log(patrolling_moves_treshold);
+                } else { // If there is at least one parcel inside the long term parcel DB, exploit it. 
                     best_option = go_to_memorized_parcel();
                     console.log("OCF - Exploiting long term parcel DB to optimize patrolling.");
                 }
@@ -1208,20 +1176,59 @@ function clean_ltpdb() {
     }
 }
 
-// Agent sensing management (not used in this version).
+// selects the second closest delivery tile if another agent blocks dt
 
-/*
-client.onAgentsSensing((agents) => {
+function evading_delivery_tile(predicate){
+
+    let evading_option = null;
+
+    var direct_min_del_tile_distance = null;
+    var agent_nearest_delivery_tile;
+    delivery_tiles_database.forEach(dt => {
+        let distance = calculate_distance(dt.x, dt.y, me.x, me.y);
+        if ((direct_min_del_tile_distance == null) && (dt.x != predicate[1] && dt.y != predicate[2])) {
+            direct_min_del_tile_distance = distance;
+            agent_nearest_delivery_tile = dt;
+        } else {
+            if ((distance < direct_min_del_tile_distance) && (dt.x != predicate[1] && dt.y != predicate[2])) {
+                direct_min_del_tile_distance = distance;
+                agent_nearest_delivery_tile = dt;
+            }
+        }
+    });
+
+    evading_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+    if (evading_option.length > 0) {
+    if (me.parcel_count > 0) {
+    myAgent.intention_queue.length = 0;
+    myAgent.push(evading_option);
+    console.log("EDT - The best option produced by the evading function (second closest delivery tile) is:");
+    console.log(evading_option);
+    } else {
+        myAgent.intention_queue.length = 0;
+        option_choosing_function();
+        myAgent.push(evading_option);
+        console.log("EDT - The best option produced by the evading function (second closest delivery tile) is:");
+        console.log(evading_option);
+    }
+    
+    }
+}
+
+// Agent sensing management 
+
+client.onAgentsSensing(async agents => {
 
     for (const a of agents) {
 
+        console.log("Agent " + a.id + " is sensed with position: " + a.x + " " + a.y);
         if (a.x % 1 != 0 || a.y % 1 != 0) // skip intermediate values (0.6 or 0.4)
             continue;
 
         // I meet someone for the first time
         if (!agent_db.has(a.id)) {
 
-            agent_db.set(a.id, [a])
+            agent_db.set(a.id, [a]);
 
         } else { // I remember him
 
@@ -1230,53 +1237,41 @@ client.onAgentsSensing((agents) => {
 
             // this is about the last time I saw him
             const last = history[history.length - 1]
-            const second_last = (history.length > 2 ? history[history.length - 2] : 'no knowledge')
 
-            if (last != 'lost') { // I was seeing him also last time
+                if (last.x != a.x || last.y != a.y) { // the agent moved
 
-                if (last.x != a.x || last.y != a.y) { // But he moved
+                    history.push(a);
 
-                    history.push(a)
+                    if (history.length > 5) {
+                        history.shift();
+                    }
 
                 }
 
-            } else { // I see him again after some time
+        }
+    
+   /* if(myAgent.intention_queue.length > 0) {
+        if(myAgent.intention_queue[0].predicate[0] === 'go_put_down') {
+            console.log("TEEEST 1");
+            console.log(myAgent.intention_queue[0].predicate);
+            if ((myAgent.intention_queue[0].predicate[1] == a.x) && (myAgent.intention_queue[0].predicate[2] == a.y))  {
+                console.log("TEEEST 2");
+                let distance_me_agent = calculate_distance(a.x, a.y, me.x, me.y);
 
-                history.push(a)
-
-                if (second_last.x != a.x || second_last.y != a.y) {
-                  //  console.log('Welcome back, seems that you moved', a.name, "; Your Score is: ", a.score)
-                } else {
-                   // console.log('Welcome back, seems you are still here as before', a.name, "; Your Score is: ", a.score)
+                if (distance_me_agent <= reacting_distance) {
+                    ocupied_dt = [];
+                    ocupied_dt.push(a.x);
+                    ocupied_dt.push(a.y);
+                    console.log("OCUPIED DT:")
+                    console.log(ocupied_dt);
+                    evading_delivery_tile();
                 }
-
             }
-
         }
 
+    } */
     }
-
-    for (const [id, history] of agent_db.entries()) {
-
-        const last = history[history.length - 1]
-        const second_last = (history.length > 1 ? history[history.length - 2] : 'no knowledge')
-
-        if (!agents.map(a => a.id).includes(id)) {
-            // If I am not seeing him anymore
-
-            if (last != 'lost') {
-                // Just went off
-
-                history.push('lost');
-                console.log('Bye', last.name);
-
-            }
-
-        }
-
-    }
-
-})*/
+})
 
 /// The core classes.
 
@@ -1476,7 +1471,52 @@ class IntentionRevisionQueue extends IntentionRevision {
             } else {
                 console.log("ALERT! ALERT! IQ OUT OF SCOPE! Intention Queue Size: " + this.intention_queue.length);
             }
-        } //TODO: Check again if enough time
+        }  // Agent wants to deliver carried parcels but senses a benefitial parcel on the way to delivery tile
+        else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'go_put_down' && intention.predicate[0] === 'go_put_down' )) {
+             console.log("IRQ - Case 5");
+
+             if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' ')))
+             return; // Intention is already queued.
+
+            
+             console.log("INTENTION:");
+             console.log(intention.predicate[0]);
+
+             if (intention == null) {
+                await new Promise(r => setTimeout(r, 1000))
+             }
+
+             console.log("2 INTENTION:");
+             console.log(intention.predicate[0]);
+
+            
+             console.log("5 - Intention queue length: " + this.intention_queue.length);
+             console.log("5 - Intention queue:");
+             this.intention_queue.forEach(intention => {
+                 console.log(intention.predicate);
+             });
+
+             console.log("Occupied Dt:");
+             console.log(ocupied_dt);
+             console.log(ocupied_dt[0]);
+             console.log(ocupied_dt[1]);
+
+             // Delivery Tile is blocked and Evading Delivery Tile is pushed
+             if (this.intention_queue[0].predicate[0] === 'go_put_down' && (this.intention_queue[0].predicate[1] == ocupied_dt[0] && this.intention_queue[0].predicate[2] == ocupied_dt[1])) {
+            console.log("IRQ - Case 5.1 -> Delivery Tile is blocked by agent -> go to Evading Delivery Tile");
+             this.intention_queue[0].stop();
+             this.intention_queue.shift();
+             this.intention_queue.unshift(intention);
+             } 
+             // Better Option than Evading Delivery Tile is pushed
+             else if (this.intention_queue[0].predicate[0] === 'go_put_down' && (intention.predicate[1] != ocupied_dt[0] || intention.predicate[2] == ocupied_dt[1])) {
+                console.log("IRQ - Case 5.2 -> a better delivery tile than the evading dt is selected:");
+                this.intention_queue[0].stop();
+                this.intention_queue.shift();
+                this.intention_queue.unshift(intention);
+             }
+       } 
+        //TODO: Check again if enough time
       /*  else if ((this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'patrolling' && intention.predicate[0] === 'go_put_down')) && parcel_decading_interval == 'infinite') {
 
             console.log("IRQ - Case 5");
@@ -1552,12 +1592,67 @@ class Intention {
                     const plan_res = await this.#current_plan.execute(...this.predicate);
                     // console.log("plan res: " + plan_res);
                     this.log('succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res);
+
+                    if (this.predicate[0] === "go_put_down") {
+                        
+                        console.log("compare predicate coordinates " + this.predicate[1] + " - " + this.predicate[2] + "with: " + checked_tile[0] + " - " + checked_tile[1]);
+                        if (this.predicate[1] != checked_tile[0] || this.predicate[2] != checked_tile[1]) {
+                            checked_tile = [];
+                            checked_tile_counter = 0;
+                            checked_tile.push(this.predicate[1]);
+                            checked_tile.push(this.predicate[2]);
+                        }
+                        console.log("Checked Tile is: " + checked_tile[0] + " - " + checked_tile[1]);
+
+                        if (this.predicate[1] == checked_tile[0] || this.predicate[2] == checked_tile[1]) {
+                            checked_tile_counter++;
+                            console.log("Counter: " + checked_tile_counter);
+                            
+                        }
+
+                        if (checked_tile_counter > 10) {
+                            console.log ("An Agent blocks the delivery tile!");
+                            evading_delivery_tile(this.predicate);
+                            checked_tile_counter = 0;
+                        }
+                    }
+
+                   /* if (this.predicate[0] === "go_put_down") {
+                        console.log("Error Handling 1 - go put down");
+                        let agent_dt_distance = null;
+                     
+                        for (const [agent_id, agent] of agent_db) {
+                        console.log("Agent " + agent_id + " on coordinates " + agent[0].x + " " + agent[0].y + " matches " + this.predicate[1] + " " + this.predicate[2]);
+                        calculate_distance
+                        if (agent.x == this.predicate[1] && agent.y == this.predicate[2]) {
+                            console.log("Error Handling 2 - go put down");
+                            evading_delivery_tile(this.predicate);
+                        }
+    
+                        }
+                    } */
+
                     return plan_res;
                     // or errors are caught so to continue with next plan
                 } catch (error) {
                     this.log('I - Failed intention', ...this.predicate, 'with plan', planClass.name, 'with error:', error);
-                }
-            }
+
+              /*    if (this.predicate[0] === "go_put_down") {
+                    console.log("Error Handling 2 - go put down");
+                 
+                     for (const agent of agent_db) {
+                           
+                     const history = agent_db.get(agent.id)
+                     const last = history[history.length - 1]
+
+                    if (last.x == this.predicate[1] && last.y == this.predicate[2]) {
+                        evading_delivery_tile(this.predicate);
+                    }
+
+                    }
+                } */
+               
+            }}
         }
         // if stopped then quit
         if (this.stopped) throw ['I - Stopped intention', ...this.predicate];
@@ -1648,6 +1743,11 @@ class GoPutDown extends Plan {
 
         clean_parcel_db();
         clean_ltpdb();
+
+        if (ocupied_dt.length != 0) {
+            console.log("No dt is occupied anymore!");
+            ocupied_dt.length = 0;
+        }
 
         return true;
     }
