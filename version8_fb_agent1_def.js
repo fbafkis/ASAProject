@@ -314,9 +314,9 @@ function calculate_movement_factor() {
         carrying_movement_factor = movement_factor + 0.4;
     }
     else if (movement_factor > 0.4 && movement_factor <= 0.7) {
-        carrying_movement_factor = movement_factor + 0.3;
+        carrying_movement_factor = movement_factor + 0.4;
     } else if (movement_factor > 0.7 && movement_factor <= 0.8) {
-        carrying_movement_factor = movement_factor + 0.2;
+        carrying_movement_factor = movement_factor + 0.3;
     } else if (movement_factor > 0.8 && movement_factor <= 0.9) {
         carrying_movement_factor = movement_factor + 0.1;
     } else {
@@ -327,7 +327,7 @@ function calculate_movement_factor() {
         movement_factor = movement_factor + 0.2;
     } else if (movement_factor < 0.5) {
         movement_factor = movement_factor + 0.1;
-    }
+    } 
     return;
 }
 
@@ -632,7 +632,7 @@ if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
         
     }
 }
-console.log(cleaned_map);
+
     if ((cleaned_map.width == 1 && new_map_borders == true) || (cleaned_map.width == 2 && new_map_borders == true) || (cleaned_map.width == 3 && new_map_borders == true)) {
      first_quadrant = [];
      second_quadrant = [];
@@ -752,9 +752,9 @@ quadrants_retrieved = true;
 function ordering_IntentionQueue(latest, old) {
 
     // console.log("Intention Queue:");
-    myAgent.intention_queue.forEach(intention => {
+    //myAgent.intention_queue.forEach(intention => {
         // console.log(intention.predicate);
-    });
+    //});
 
     var new_parcel = parcel_db.get(latest.predicate[3]);
     var old_parcel = parcel_db.get(old.predicate[3]);
@@ -784,7 +784,7 @@ function ordering_IntentionQueue(latest, old) {
         // console.log("WARNING! EXCEPTION CAUGHT!")
         // console.log(err);
 
-        let exception = "exception";
+        let exception = "exception: ";
         return exception;
     }
 }
@@ -1545,7 +1545,12 @@ function option_choosing_function() {
 
                             // console.log("OCF - Picking up one of the perceived parcels will probably grant a gain in terms of score. The parcel is:");
                             // console.log(best_parcel);
-                            best_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id];
+                            if (me.parcel_count > 0 && highest_reward < 15 || me.parcel_count > 3 && highest_reward < 25) {
+                                best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+                            } else {
+                                best_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id];
+                            }
+                            
                         }
                     } else {
                         // If agent doesn't have available parcel in sensing scope -> it checks what value the parcel outside the sensing scope generates and makes decision
@@ -1582,8 +1587,12 @@ function option_choosing_function() {
 
                             // console.log("OCF - Picking up one of the perceived parcels will probably grant a gain in terms of score. The parcel is:");
                             // console.log(best_parcel);
-                            best_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id];
-                        }
+                            if (me.parcel_count > 0 && highest_reward < 15 || me.parcel_count > 3 && highest_reward < 25) {
+                                best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+                            } else {
+                                best_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id];
+                            }
+                             }
 
                         // If none of the perceived parcel will grant a gain, go to delivery directly. 
                     } else {
@@ -1821,7 +1830,9 @@ class IntentionRevision {
              console.log("z");
              patrolling_points_selected = true;
              everything_initialized = true;
+             if (reduced_patrolling == true) {
              patrolling_area_assigned = true;
+            }
             }
 
    /* while (first_quadrant.length == 0 || second_quadrant.length == 0) {
@@ -1984,15 +1995,17 @@ class IntentionRevisionQueue extends IntentionRevision {
 
                 let priority = ordering_IntentionQueue(intention, this.intention_queue[0]);
 
+                let distance_a_s = calculate_distance (me.x, me.y, this.intention_queue[0].predicate[1], this.intention_queue[0].predicate[2])
+
                 if (priority == "exception") {
                     console.log("ERROR CAUGHT! IQ Size 1")
                     intention_revision_reset();
                 }
-                else if (priority == intention.predicate[3]) {
+                else if (priority == intention.predicate[3] && distance_a_s > 5) {
                     // console.log("IRQ - Case 4.3.1 -> IQ Size 1 - Reordering is needed");
                     this.intention_queue[0].stop();
                     this.intention_queue.unshift(intention);
-                } else {
+                } else { 
                     // console.log("IRQ - Case 4.3.2 -> IQ Size 1 - No new order is needed!");
                     this.intention_queue.push(intention);
                 }
@@ -2000,13 +2013,18 @@ class IntentionRevisionQueue extends IntentionRevision {
             // Since Intention Queue has Size 2 it has to be checked if new parcel is pushed and in which place it will be pushed
             else if (this.intention_queue.length == 2) {
 
+                console.log("X!!!! - " + this.intention_queue[0].predicate[1]);
+                console.log("Y!!!! - " + this.intention_queue[0].predicate[2]);
+
+                let distance_a_s = calculate_distance (me.x, me.y, this.intention_queue[0].predicate[1], this.intention_queue[0].predicate[2])
+
                 let priority_1 = ordering_IntentionQueue(intention, this.intention_queue[0]);
 
                 if (priority_1 == "exception") {
                     console.log("ERROR CAUGHT! IQ Size 2 - Prio 1")
                     intention_revision_reset();
                 }
-                else if (priority_1 == intention.predicate[3]) {
+                else if (priority_1 == intention.predicate[3] && distance_a_s > 5) {
                     // console.log("IRQ - Case 4.4.1 -> IQ Size 2 - New Intention is BEST Intention");
                     this.intention_queue[0].stop();
                     this.intention_queue.unshift(intention);
@@ -2024,7 +2042,7 @@ class IntentionRevisionQueue extends IntentionRevision {
                         this.intention_queue.pop();
                         this.intention_queue.push(intention);
                     } else {
-                        console.log("WARNING: IRQ - Case 4.5.2 -> IQ Size 2 - New Intention is WORST! New Intention gets deleted");
+                        console.log("WARNING: IRQ - Case 4.5.2 -> IQ Size 2 - New Intention is worse than intention on second position! New Intention gets deleted");
                     }
                 }
             } else {
