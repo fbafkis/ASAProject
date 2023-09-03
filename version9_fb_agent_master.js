@@ -45,13 +45,236 @@ var ltpdb_update_interval;
 var interval_trigger = true;
 
 var map_initialized = false;
+var my_pivots = new Array;
+var other_agent_id = "09fd649e76e"
+var patrolling_area_assigned = false;
+var patrolling_pivots = new Array;
+
+
+var parcels_agents_assignments = new Map;
+
+
+
+
+
+
+///////////////////////////////////////////////////
+// Version 8 addings
+
+// Function to update agents' assignment to parcels (UPA).
+function produce_estimations() {
+    let myself_parcels_estimations = new Map;
+
+
+    for (const [pid, parcel] of long_term_parcel_db) {
+        var direct_min_del_tile_distance = -1;
+        var parcel_nearest_delivery_tile;
+        delivery_tiles_database.forEach(dt => {
+            let distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
+            if (direct_min_del_tile_distance == -1) {
+                direct_min_del_tile_distance = distance;
+                parcel_nearest_delivery_tile = dt;
+            } else {
+                if (distance < direct_min_del_tile_distance) {
+                    direct_min_del_tile_distance = distance;
+                    parcel_nearest_delivery_tile = dt;
+                }
+            }
+        });
+
+
+        let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
+
+        let my_final_reward = parcel.reward - Math.round((parcel_total_distance * decading_factor) * carrying_movement_factor);
+
+        myself_parcels_estimations.set(pid, my_final_reward);
+    }
+    return myself_parcels_estimations;
+}
+
+async function update_parcel_assignment() {
+
+
+    let myself_parcels_estimations = produce_estimations();
+
+    let message = { type: "parcels_assignment_request" };
+    let reply = await client.ask(other_agent_id, message);
+
+    if (reply) {
+        for (const [pid, estimation] of myself_parcels_estimations) {
+            if (reply.estimation.has(pid)) {
+                if (reply.estimations.get(pid) >= estimation) {
+                    parcels_agents_assignments.set(pid, false);
+                } else {
+                    parcels_agents_assignments.set(pid, true);
+                }
+            } else {
+                parcels_agents_assignments.set(pid, true);
+            }
+        }
+
+        await client.say(other_agent_id, {
+            type: "parcel_assignment_update",
+            assignments: parcels_agents_assignments
+        });
+        console.log("UPA - Parcel assignment update sent.");
+    } else {
+        console.log("UPA - Never received a reply to the dealing request.");
+    }
+}
+
+
+// Version 7 addings
+
+
+function compare_distance(a, b) {
+    if (a.distance < b.distance) {
+        return -1;
+    }
+    if (a.distance > b.distance) {
+        return 1;
+    }
+    return 0;
+}
+
+function produce_patrolling_pivots() {
+    for (let i = 1; i <= 4; i++) {
+        var pivot = { x: patrolling_x_coordinates.get(i), y: patrolling_y_coordinates.get(i), distance: calculate_distance(me.x, me.y, patrolling_x_coordinates.get(i), patrolling_y_coordinates.get(i)) };
+        patrolling_pivots.push(pivot);
+    }
+    patrolling_pivots = patrolling_pivots.sort(compare_distance);
+}
+
+// Patrolling artea dealing (PAD). 
+
+async function deal_patrolling_area() {
+
+    patrolling_pivots = produce_patrolling_pivots();
+    var my_favorite_pivots = [];
+
+    my_favorite_pivots[0] = patrolling_pivots.at(0);
+    my_favorite_pivots[1] = patrolling_pivots.at(1);
+
+    let message = { type: "area_dealing_request", pivots: patrolling_pivots };
+    let reply = await client.ask(other_agent_id, message);
+
+    if (reply) {
+        if (reply.response === "OK") {
+            my_pivots = my_favorite_pivots;
+            patrolling_area_assigned = true;
+            console.log("PAD - Other agent ahsn't already chose the patrolling pivots. Setting up mine to the values I prefer.");
+        } else if (reply.response === "DENY") {
+            my_pivots[0] = reply.pivots.at(2);
+            my_pivots[1] = reply.pivots.at(3);
+            patrolling_area_assigned = true;
+            console.log("PAD - Other agent already chose the patrolling pivots. Setting up mine to the values he sent.");
+        } else {
+            console.log("PAD - Reply format not valid.");
+        }
+    } else {
+        console.log("PAD - Never received a reply to the dealing request.");
+    }
+}
+
+// Parcel sensing message sending (PSMS).
+
+async function notifyParcelSensed(parcel) {
+    await client.say(other_agent_id, {
+        type: "parcel_sensing_notification",
+        parcel: parcel
+    });
+    console.log("PSMS - Parcel sensing notification sent.")
+}
+
+// Parcel pickup message sending (PPMS).
+
+async function notifyParcelPickup(parcel) {
+    await client.say(other_agent_id, {
+        type: "parcel_pickup_notification",
+        pid: parcel.id
+    });
+    console.log("PSMS - Parcel pickup notification sent.")
+}
+
+// Parcel gone message sending (PGMS).
+
+async function notifyParcelGone(parcel) {
+    await client.say(other_agent_id, {
+        type: "parcel_gone_notification",
+        pid: parcel.id
+    });
+    console.log("PSMS - Parcel gone notification sent.")
+}
+
+// Message receiving event management (REM).
+client.onMsg((id, name, message, reply) => {
+    if (id === other_agent_id) {
+        console.log("REM - New message received from ", name + ': ', message);
+
+        if (message.type === "area_dealing_request") {
+            console.log("REM - Received request for dealing patrolling area.")
+            if (patrolling_area_assigned) {
+                let answer = { response: "DENY", pivots: patrolling_pivots };
+                if (reply)
+                    try { reply(answer) } catch { (error) => console.error(error) }
+            } else {
+                patrolling_pivots = produce_patrolling_pivots();
+                let answer = { response: "OK" };
+                if (reply)
+                    try { reply(answer) } catch { (error) => console.error(error) }
+                my_pivots[0] = messsage.pivots[0];
+                my_pivots[1] = message.pivots[1];
+            }
+        }
+
+        //////////////////
+
+        if (message.type === 'parcel_sensing_notification') {
+            console.log("REM - Received notification of new parcel sensing from other agent.");
+            long_term_parcel_db.set(message.parcel.id, message.parcel);
+            console.log("REM - Parcel added to long term parcel DB.");
+        }
+
+        //////////////////
+
+        if (message.type === "parcel_pickup_notification") {
+            console.log("REM - Received notification of parcel picked up from other agent.");
+            long_term_parcel_db.delete(message.pid);
+            console.log("REM - Parcel removed from long term parcel DB.");
+        }
+
+        //////////////////
+
+        if (message.type === "parcel_gone_notification") {
+            console.log("REM - Received notification of parcel gone from other agent.");
+            long_term_parcel_db.delete(message.pid);
+            console.log("REM - Parcel removed from long term parcel DB.");
+        }
+
+        //////////////////  VERSION 8 ONLY 
+
+        if (message.type === "parcels_assignment_request") {
+
+            let myself_parcels_estimations = produce_estimations();
+            let answer = {estimations: myself_parcels_estimations};
+            if (reply)
+                try { reply(answer) } catch { (error) => console.error(error) }
+        }
+
+        //////////////////  VERSION 8 ONLY 
+        
+        if (message.type === "parcel_assignment_update") {
+            console.log("REM - Received update of assignments from other agent.");
+            parcels_agents_assignments = message.assignments;
+        }
+
+    } else {
+        console.log("REM - Received message from unknown sender. Dropping it.")
+    }
+});
 
 ///////////////////////////////////////////////////
 
-
-
-
-///////////////////////////////////////////////////
 /// Functions.
 
 //Function to calculate the distance using coordinates.
