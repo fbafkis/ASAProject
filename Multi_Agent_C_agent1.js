@@ -24,6 +24,21 @@ const map = {
         return this.tiles.get(x + 1000 * y)
     }
 };
+
+// map after redifining borders
+const cleaned_map = {
+    width: undefined,
+    height: undefined,
+    tiles: new Map(),
+    add: function (tile) {
+        const { x, y } = tile;
+        return this.tiles.set(x + 1000 * y, tile);
+    },
+    xy: function (x, y) {
+        return this.tiles.get(x + 1000 * y)
+    }
+}
+
 // The field that keeps trace of the parcels currently carried by myself.
 me.parcel_count;
 // The decading interval of the parcels. 
@@ -42,6 +57,8 @@ var delivery_tiles_database = [];
 var patrolling_area_counter = 1;
 // A flag to ensure that data from the game has correctly retrieved. 
 var game_initialized = false;
+// game and patrolling points are initalized
+var everything_initialized = false;
 // Counter to keep trace of the sequential number of patrolling moves pushed.
 var patrolling_moves_counter = 0;
 // Limit of patrolling moves to execute while I am carrying some parcels before to force the delivery. 
@@ -97,13 +114,134 @@ var patrolling_area_assigned = false;
 var quadrants_retrieved = false;
 // 0 or 1 flag to cycle over the 2 quadrants. 
 var last_quadrant = 0;
+// X-Coordinates of cleaned valid tiles
+var non_valid_tiles_cleaned_x = [];
+// if patrolling points are selected
+var patrolling_points_selected = false;
+// if we have a map with ne borders
+var new_map_borders = false;
+
+var reduced_patrolling = false;
+
+var cleaned_map_width_min = null;
+var cleaned_map_width_max = null; 
+
+var spawning_tiles = [];
 
 /// Functions.
 
-///////////////////// Multi agent related. 
+function produce_estimations() {
+    let myself_parcels_estimations = new Map;
+
+    console.log("Produce esitmaiton ltpdb size:" + long_term_parcel_db.size);
+
+    for (const [pid, parcel] of long_term_parcel_db) {
+        var direct_min_del_tile_distance = -1;
+        var parcel_nearest_delivery_tile;
+        delivery_tiles_database.forEach(dt => {
+            let distance = calculate_distance(dt.x, dt.y, parcel.x, parcel.y);
+            if (direct_min_del_tile_distance == -1) {
+                direct_min_del_tile_distance = distance;
+                parcel_nearest_delivery_tile = dt;
+            } else {
+                if (distance < direct_min_del_tile_distance) {
+                    direct_min_del_tile_distance = distance;
+                    parcel_nearest_delivery_tile = dt;
+                }
+            }
+        });
+
+
+        let parcel_total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
+
+        let my_final_reward = parcel.reward - Math.round((parcel_total_distance * decading_factor) * carrying_movement_factor);
+
+        myself_parcels_estimations.set(pid, my_final_reward);
+    }
+
+
+
+    return myself_parcels_estimations;
+}
+
+// Function that updates and exchanges between agents the estimations of reward for each parcel (UPA).
+
+async function update_parcel_assignment() {
+
+    let myself_parcels_estimations = produce_estimations();
+
+    parcels_agents_assignments = new Map;
+
+
+    console.log("UPA - Estimations length: " + myself_parcels_estimations.size);
+    // for (const [pid, estimation] of myself_parcels_estimations) {
+    //     console.log("UPA - Estimation for parcel " + pid + ": " + estimation);
+    // }
+
+    let message = { type: "parcels_assignment_request" };
+    let reply;
+    function wait(ms) {
+        return new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('UPA - Timeout in communicating with other agent.')), ms);
+        });
+    }
+    // Set promise race while asking to have a timout on communication. 
+    try {
+        reply = await Promise.race([wait(500), client.ask(other_agent_id, message)]);
+    } catch (err) {
+        console.log("UPA - Error in communicating with other agent.");
+        console.log("UPA - Parcel assignments:");
+        for (const [pid, mine] of parcels_agents_assignments) {
+            console.log("Parcel with PID: " + pid + " assigned to me: " + mine);
+        }
+    }
+    console.log("UPA - Reply:");
+    console.log(reply);
+    if (reply) {
+        for (const [pid, estimation] of myself_parcels_estimations) {
+            console.log("UPA - Typeof reply estimations:")
+            console.log(reply.estimation instanceof Map);
+            if (reply.estimations instanceof Map) {
+                if (reply.estimations.has(pid)) {
+                    if (reply.estimations.get(pid) >= estimation) {
+                        parcels_agents_assignments.set(pid, false);
+                    } else {
+                        parcels_agents_assignments.set(pid, true);
+                    }
+                }
+            } else {
+
+                parcels_agents_assignments = new Map;
+                parcels_agents_assignments.set(pid, true);
+            }
+        }
+
+        await client.say(other_agent_id, {
+            type: "parcel_assignment_update",
+            assignments: parcels_agents_assignments
+        });
+        console.log("UPA - Parcel assignment update sent.");
+    } else {
+        console.log("UPA - Never received a reply to the parcel assignments update request.");
+
+        console.log("UPA - Parcel assignments:");
+        for (const [pid, mine] of parcels_agents_assignments) {
+            console.log("Parcel with PID: " + pid + " assigned to me: " + mine);
+        }
+    }
+}
+
+
 
 // Function to produce tha patrolling pivots that will be distributed between agents (CFQ). 
 async function choose_my_fav_quadrants() {
+
+console.log("test5555");
+    console.log("Me - x: " + me.x + " " + me.y);
+    console.log(first_quadrant[0]);
+    console.log(first_quadrant[1]);
+    console.log(second_quadrant[0]);
+    console.log(second_quadrant[1]);
 
     // I select the quadrant where I am and the one near (1 and 4, 2 and 3, look at the report for the map) as e my favourite. 
     let my_fav_quadrants = [];
@@ -249,6 +387,22 @@ client.onMsg(async (id, name, message, reply) => {
             // console.log("REM - Parcel removed from long term parcel DB.");
         }
 
+        // Send my estimation (for myself) replying to other agent's request. 
+        if (message.type === "parcels_assignment_request") {
+
+            let myself_parcels_estimations = produce_estimations();
+            console.log("REM - Replying with my estimations...")
+            let answer = { estimations: myself_parcels_estimations };
+            if (reply)
+                try { reply(answer) } catch { (error) => console.error(error) }
+        }
+
+        // Update my assignment with fresh updated estimations from other agent. 
+        if (message.type === "parcel_assignment_update") {
+            console.log("REM - Received update of assignments from other agent.");
+            parcels_agents_assignments = message.assignments;
+        }
+
     } else {
         // console.log("REM - Received message from unknown sender. Dropping it.")
     }
@@ -276,10 +430,10 @@ function calculate_movement_factor() {
         carrying_movement_factor = movement_factor + 0.4;
     }
     else if (movement_factor > 0.4 && movement_factor <= 0.7) {
-        carrying_movement_factor = movement_factor + 0.3;
+carrying_movement_factor = movement_factor + 0.4;
     } else if (movement_factor > 0.7 && movement_factor <= 0.8) {
-        carrying_movement_factor = movement_factor + 0.2;
-    } else if (movement_factor > 0.8 && movement_factor <= 0.9) {
+        carrying_movement_factor = movement_factor + 0.3;
+        } else if (movement_factor > 0.8 && movement_factor <= 0.9) {
         carrying_movement_factor = movement_factor + 0.1;
     } else {
         carrying_movement_factor = movement_factor;
@@ -452,7 +606,189 @@ const patrolling_y_coordinates = new Map()
 
 // Function that selects the pivot points on the map to perform patrolling. 
 
-function select_patrolling_points() {
+async function select_patrolling_points() {
+
+    /**
+ * @type {Map<string,[{x, y}]}
+ */
+    const non_valid_tiles = new Map();
+
+    for (let i=0; i<map.width; i++){
+        for (let j = 0; j < map.height; j++) {
+            let considered_tile = map.xy(i, j);
+            if ((considered_tile == undefined)) {
+                let coordinates_ct = {x: i, y: j};
+                non_valid_tiles.set(i + 1000 * j, coordinates_ct)
+            } else { 
+                continue;  
+            }
+        }
+    }
+
+  //  console.log(non_valid_tiles);
+ 
+    for (let z = 0; z < map.width; z++) {
+//        console.log("Width = " + map.width + " z = " + z);
+    let counter = 0;
+    let coordinates = non_valid_tiles.entries().next().value;
+    let x_coordinate = coordinates[1].x;
+  //console.log("X-Coordinate is:" + x_coordinate);
+  
+    //console.log("Counter: " + counter);
+    for (const entry of non_valid_tiles) {
+        if (entry[1].x == x_coordinate) {
+          //  console.log("Entry coordinates: " + entry[1].x + " " + entry[1].y);
+            counter++;
+         //   console.log("Counter: " + counter);
+        }
+    }
+
+  //  console.log("Comparision! Counter: " + counter + " Map height " + map.height);
+    if (counter < map.height) {
+//        console.log("Entry coordinates to be deleted " + x_coordinate + " - Counter: " + counter);
+        for (let j = 0; j < map.height; j++) {
+        non_valid_tiles.delete(x_coordinate + 1000 * j);
+    }
+}
+ //   console.log("Comparision! Counter: " + counter + " Map height " + map.height);
+    if (counter == map.height) {
+   //     console.log("Entry coordinates to be deleted " + x_coordinate + " - Counter: " + counter); 
+        non_valid_tiles_cleaned_x.push(x_coordinate);
+        for (let j = 0; j < map.height; j++) {
+        non_valid_tiles.delete(x_coordinate + 1000 * j);
+    }
+}
+
+    if (x_coordinate == (map.width - 1)) {
+     //   console.log("All elements done!");
+        break;
+    }
+    }
+
+//console.log("final Map!");
+//console.log(non_valid_tiles_cleaned_x);
+
+cleaned_map_width_min = null;
+cleaned_map_width_max = null;
+//console.log(me);
+
+
+for(let i = 0; i < non_valid_tiles_cleaned_x.length; i++) {
+ /*   console.log("Element: " + non_valid_tiles_cleaned_x[i]);
+    console.log("Me X: " + me.x);
+    console.log("Max: " + cleaned_map_width_max);
+    console.log("Min: " + cleaned_map_width_min);
+*/
+
+    if (cleaned_map_width_max == null && me.x < non_valid_tiles_cleaned_x[i]) {
+        cleaned_map_width_max = non_valid_tiles_cleaned_x[i];
+        console.log("test1");
+    } else if (cleaned_map_width_min == null && me.x > non_valid_tiles_cleaned_x[i]) {
+        cleaned_map_width_min = non_valid_tiles_cleaned_x[i];
+        console.log("test2");
+    } else  if (cleaned_map_width_max != null && me.x < non_valid_tiles_cleaned_x[i] && cleaned_map_width_max > non_valid_tiles_cleaned_x[i]) {
+        cleaned_map_width_max = non_valid_tiles_cleaned_x[i];
+        console.log("test3");
+    } else if (cleaned_map_width_min != null && me.x > non_valid_tiles_cleaned_x[i] && cleaned_map_width_min < non_valid_tiles_cleaned_x[i]) {
+        cleaned_map_width_min = non_valid_tiles_cleaned_x[i];
+        console.log("test4");
+    }
+
+}
+
+console.log("New cleaned map boundaries: ");
+console.log(cleaned_map_width_min);
+console.log(cleaned_map_width_max);
+
+if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
+    new_map_borders = true;
+    if (cleaned_map_width_max == null) {
+    cleaned_map.width = (map.width - cleaned_map_width_min - 1);
+   // console.log("New Width: " + cleaned_map.width);
+    cleaned_map.height = map.height;
+
+        // Add  tiles to cleaned_map.
+        for (const tile of map.tiles.values()) {
+            if (tile.x > cleaned_map_width_min) {
+                cleaned_map.add(tile)
+            }
+        }
+    } else if (cleaned_map_width_min == null) {
+        cleaned_map.width = (cleaned_map_width_max - 1);
+      //  console.log("New Width: " + cleaned_map.width);
+        cleaned_map.height = map.height;
+    
+            // Add  tiles to cleaned_map.
+            for (const tile of map.tiles.values()) {
+                if (tile.x < cleaned_map_width_max) {
+                    cleaned_map.add(tile)
+                }
+            }
+    } else {
+    cleaned_map.width = (cleaned_map_width_max - cleaned_map_width_min - 1);
+ 
+  //  console.log("New Width: " + cleaned_map.width);
+    cleaned_map.height = map.height;
+
+        // Add  tiles to cleaned_map.
+        for (const tile of map.tiles.values()) {
+            if (tile.x > cleaned_map_width_min && tile.x < cleaned_map_width_max) {
+                cleaned_map.add(tile)
+                   }
+        }
+    } 
+    
+    if (cleaned_map.width == 1) {
+        var one_lane_x = null;
+        if (cleaned_map_width_max == null ) {
+            one_lane_x = cleaned_map_width_min + 1;
+        } else if (cleaned_map_width_min == null) {
+            one_lane_x = cleaned_map_width_max - 1;
+        }else {
+             one_lane_x = cleaned_map_width_max - 1;
+        }
+        
+    }
+}
+
+    if ((cleaned_map.width == 1 && new_map_borders == true) || (cleaned_map.width == 2 && new_map_borders == true) || (cleaned_map.width == 3 && new_map_borders == true)) {
+     first_quadrant = [];
+     second_quadrant = [];
+
+reduced_patrolling = true;
+
+first_quadrant.push(one_lane_x);
+if (cleaned_map.height % 2 == 0) {
+first_quadrant.push(cleaned_map.height / 2 - 1);
+} else {
+first_quadrant.push((cleaned_map.height + 1) / 2 - 1);
+}
+second_quadrant.push(one_lane_x);
+if (cleaned_map.height % 2 == 0) {
+second_quadrant.push(cleaned_map.height / 2);
+} else {
+second_quadrant.push((cleaned_map.height + 1) / 2);
+} 
+
+for (const tile of cleaned_map.tiles.values()) {
+    if (tile.delivery == true) {
+        continue;
+    }
+
+    if (tile.y <= first_quadrant[1]) {
+        first_quadrant_tiles.push(tile);
+    } 
+    else if (tile.y >= second_quadrant[1]) {
+        second_quadrant_tiles.push(tile);
+    }
+    }
+} else {
+
+     first_quadrant = [];
+     second_quadrant = [];
+     third_quadrant = [];
+     fourth_quadrant = [];
+    
 
     if (map.width % 2 == 0) {
 
@@ -521,38 +857,22 @@ function select_patrolling_points() {
         }
     }
 
-    /*   let target_x;
-       let target_y;
-       let valid_tile;
+    console.log("FQ: x: " + first_quadrant[0] + " " + first_quadrant[1]);
+    console.log("sQ: x: " + second_quadrant[0] + " " + second_quadrant[1]);
+    console.log("tQ: x: " +third_quadrant[0] + " " + third_quadrant[1]);
+   }
+   console.log(first_quadrant_tiles);
+   console.log(second_quadrant_tiles);
    
-       target_y = Math.floor(map.height / 3) + 1;
-       target_x = Math.floor(map.width / 3) + 1;
-   
-       //TODO: If patrolling is specified - check if tile is undefined
-   
-       patrolling_x_coordinates.set("1", target_x);
-       patrolling_y_coordinates.set("1", target_y);
-   
-   
-       patrolling_x_coordinates.set("2", (target_x));
-       patrolling_y_coordinates.set("2", (target_y * 2));
-   
-       patrolling_x_coordinates.set("3", (target_x * 2));
-       patrolling_y_coordinates.set("3", (target_y * 2));
-   
-       patrolling_x_coordinates.set("4", (target_x * 2));
-       patrolling_y_coordinates.set("4", (target_y));
-   
-       return; */
-}
+       }
 
 // Function for comparing to intentions and returning the better option (IQO).
 function ordering_IntentionQueue(latest, old) {
 
     // console.log("Intention Queue:");
-    myAgent.intention_queue.forEach(intention => {
+    //myAgent.intention_queue.forEach(intention => {
         // console.log(intention.predicate);
-    });
+    //});
 
     var new_parcel = parcel_db.get(latest.predicate[3]);
     var old_parcel = parcel_db.get(old.predicate[3]);
@@ -582,7 +902,7 @@ function ordering_IntentionQueue(latest, old) {
         // console.log("WARNING! EXCEPTION CAUGHT!")
         // console.log(err);
 
-        let exception = "exception";
+        let exception = "exception: ";
         return exception;
     }
 }
@@ -639,9 +959,11 @@ async function patrolling_case_selection() {
     let random_index = null;
     let selected_tile = null;
     let patrolling_point_distance = null;
+spawning_tiles = [];
 
     ///////////////////////////////
 
+if (reduced_patrolling == false) {
     while (!patrolling_area_assigned) {
         console.log("PCS - Waiting for patrolling area assignment to complete.");
         await new Promise(r => setTimeout(r, 500));
@@ -701,15 +1023,64 @@ async function patrolling_case_selection() {
             }
         }
     }
+} else {
 
-    /////////////////////////////////////////////////////////
+    let spawner = false;
 
-    // console.log("PCS - Active sector lenght: " + active_sector.length);
+    while(true) {
+    if (patrolling_area_counter > 2 || patrolling_area_counter < 1) {
+        patrolling_area_counter = 1;
+    }
+
+
+    switch (patrolling_area_counter) {
+        case 1:
+          active_sector = first_quadrant_tiles;
+          break;
+        case 2:
+          active_sector = second_quadrant_tiles;
+          break;
+        default:
+          console.log("PCS - Warning -> impossible case!");
+      }
+    
+    for (const tile of active_sector) {
+        if (tile.parcelSpawner == true) {
+            spawner = true;
+            spawning_tiles.push(tile);
+        }
+    }
+    
+    console.log("Spawner: " + spawner);
+    if (spawner == true) {
+        break;
+    } else {
+        patrolling_area_counter++;
+    }
+    
+    }
 
     if (patrolling_init == false) {
         random_index = Math.floor(Math.random() * active_sector.length);
         selected_tile = active_sector[random_index];
-        // console.log("PCS - Initial Tile selected - x: " + selected_tile.x + " + y: " + selected_tile.y + " !");
+        idle_option = ['patrolling', selected_tile.x, selected_tile.y];
+        last_patrolling_point = selected_tile;
+        patrolling_init = true;
+    } else {
+            random_index = Math.floor(Math.random() * active_sector.length);
+            selected_tile = active_sector[random_index];
+                idle_option = ['patrolling', selected_tile.x, selected_tile.y];
+                last_patrolling_point = selected_tile;
+        }
+    }
+
+
+
+    
+if (reduced_patrolling == false) {
+    if (patrolling_init == false) {
+        random_index = Math.floor(Math.random() * active_sector.length);
+        selected_tile = active_sector[random_index];
         idle_option = ['patrolling', selected_tile.x, selected_tile.y];
         last_patrolling_point = selected_tile;
         patrolling_init = true;
@@ -728,28 +1099,15 @@ async function patrolling_case_selection() {
             }
         }
     }
+}
+
     patrolling_area_counter++;
     console.log("PCS - Patrolling intention that is pushed is: ");
     console.log(idle_option);
 
     return idle_option;
-
-    /*if (patrolling_area_counter == 1) {
-        idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
-        patrolling_area_counter++;
-    } else if (patrolling_area_counter == 2) {
-        idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
-        patrolling_area_counter++;
-    } else if (patrolling_area_counter == 3) {
-        idle = ['patrolling', patrolling_x_coordinates.get("3"), patrolling_y_coordinates.get("3")];
-        patrolling_area_counter++;
-    } else if (patrolling_area_counter == 4) {
-        idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
-        patrolling_area_counter++;
     }
-    */
 
-}
 
 // Function to set the agent going to the (eventually present)best parcel into the long term parcel DB (GTMP). 
 
@@ -757,8 +1115,8 @@ function go_to_memorized_parcel() {
 
     let highest_ratio = null;
     let best_parcel;
-
-    for (const [pid, parcel] of long_term_parcel_db) {
+    
+        for (const [pid, parcel] of long_term_parcel_db) {
 
         var direct_min_del_tile_distance = null;
         var parcel_nearest_delivery_tile;
@@ -776,18 +1134,18 @@ function go_to_memorized_parcel() {
         });
 
 
-        let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
-        let parcel_ratio = parcel.reward - Math.round((total_distance * decading_factor) * movement_factor);
-        if (highest_ratio == null) {
-            highest_ratio = parcel_ratio;
-            best_parcel = parcel;
-        } else {
-            if (parcel_ratio > highest_ratio)
-                highest_ratio = parcel_ratio;
-            best_parcel = parcel;
-        }
-    }
-
+                        let total_distance = calculate_distance(me.x, me.y, parcel.x, parcel.y) + direct_min_del_tile_distance;
+                let parcel_ratio = parcel.reward - Math.round((total_distance * decading_factor) * movement_factor);
+                if (highest_ratio == null) {
+                    highest_ratio = parcel_ratio;
+                    best_parcel = parcel;
+                } else {
+                    if (parcel_ratio > highest_ratio)
+                        highest_ratio = parcel_ratio;
+                    best_parcel = parcel;
+                }
+                        }
+        
     // Check if parcel is worth to be picked up -> If not go normal patrolling
 
     if (highest_ratio > 0) {
@@ -908,9 +1266,11 @@ function option_choosing_function() {
     });
 
 
+
     /// 0.2 Calculate the reward/distance ratio for each parcel, finding out the one with the highest. 
     let best_ratio_parcel;
     let best_ratio = null;
+
 
 
     // Check that into the perceived parcels there are not only those I am carrying, otherwise it is useless to search for best ratio parcel.
@@ -946,19 +1306,33 @@ function option_choosing_function() {
                     ratio = parcel.reward;
                 }
                 if (best_ratio == null) {
+if (reduced_patrolling == true) {
+                        if (parcel.x > cleaned_map_width_min && parcel.x < cleaned_map_width_max) {
                     best_ratio_parcel = parcel;
                     best_ratio = ratio;
+} 
+                    } else {
+                    best_ratio_parcel = parcel;
+                    best_ratio = ratio; 
+                    } 
                 } else {
                     if (ratio > best_ratio) {
+if (parcel.x > cleaned_map_width_min && parcel.x < cleaned_map_width_max) {
+                            best_ratio_parcel = parcel;
+                            best_ratio = ratio;
+                        } 
+                    } else {
                         best_ratio = ratio;
                         best_ratio_parcel = parcel;
                     }
                 }
-
             }
         }
-        // console.log("OCF - Parcel " + best_ratio_parcel.id + " has the best ratio with the value: " + best_ratio);
+        
     }
+
+// console.log("OCF - Parcel " + best_ratio_parcel.id + " has the best ratio with the value: " + best_ratio);
+    
 
     // 0.3 Compare with memorized parcels of long term parcel_db
 
@@ -976,10 +1350,31 @@ function option_choosing_function() {
 
     /// Case management.
 
+   if (reduced_patrolling == true ) {
+        if(me.parcel_count >= 1) {
+            best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+        } else {
+            let patrolling_flag = true;
+            let distance_spawner = null;
+            for (let i = 0; i < spawning_tiles.length; i++) {
+                distance_spawner = calculate_distance(me.x, me.y, spawning_tiles[i].x, spawning_tiles[i].y);
+                if (distance_spawner < parcel_sensing_distance) {
+                    patrolling_flag = false;
+                }
+            }
+            if (patrolling_flag == true) {
+            best_option = patrolling_case_selection();
+            } else {
+                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
+            }
+           
+        }
+   }
+
     /// Case 1.1: Maximum number of carried parcels reached for infinite parcel degredation
 
-    //TODO: Check behaviour on challenge_23 (maybe if cases for infinite and degredation with degredation still using max_parcels)
-    if ((me.parcel_count >= max_allowed_parcels) && (parcel_decading_interval == 'infinite')) {
+    
+    else if ((me.parcel_count >= max_allowed_parcels) && (parcel_decading_interval == 'infinite')) {
         // console.log("OCF - 1.1 - Maximum number of carried parcels reached. Let's go to delivery.")
         best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
     }
@@ -1284,7 +1679,12 @@ function option_choosing_function() {
 
                             // console.log("OCF - Picking up one of the perceived parcels will probably grant a gain in terms of score. The parcel is:");
                             // console.log(best_parcel);
+if (me.parcel_count > 0 && highest_reward < 15 || me.parcel_count > 3 && highest_reward < 25) {
+                                best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+                            } else {
                             best_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id];
+                        }
+
                         }
                     } else {
                         // If agent doesn't have available parcel in sensing scope -> it checks what value the parcel outside the sensing scope generates and makes decision
@@ -1321,8 +1721,12 @@ function option_choosing_function() {
 
                             // console.log("OCF - Picking up one of the perceived parcels will probably grant a gain in terms of score. The parcel is:");
                             // console.log(best_parcel);
+if (me.parcel_count > 0 && highest_reward < 15 || me.parcel_count > 3 && highest_reward < 25) {
+                                best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+                            } else {
                             best_option = ['go_pick_up', best_parcel.x, best_parcel.y, best_parcel.id];
                         }
+}
 
                         // If none of the perceived parcel will grant a gain, go to delivery directly. 
                     } else {
@@ -1457,6 +1861,7 @@ function clean_ltpdb() {
     }
 }
 
+
 // Agent sensing management (not used in this version).
 
 /*
@@ -1552,12 +1957,31 @@ class IntentionRevision {
             console.log("CFQ - Waiting for myself to know where I am.")
         }
 
-        if (!patrolling_area_assigned) {
+        if (game_initialized) { // Check if the game has been initialized. 
+            if (patrolling_points_selected == false) {
+             // Preparing the patrolling strategy. 
+             select_patrolling_points();
+             console.log("z");
+             patrolling_points_selected = true;
+             everything_initialized = true;
+if (reduced_patrolling == true) {
+             patrolling_area_assigned = true;
+            }
+}
+
+   /* while (first_quadrant.length == 0 || second_quadrant.length == 0) {
+        await new Promise(r => setTimeout(r, 1000));
+        console.log("CFQ - Waiting for Quadrant definition.")
+    } */
+
+    if (!patrolling_area_assigned && reduced_patrolling == false) {
             await deal_patrolling_area();
+console.log("IRL - Patrolling area assigned is: " + patrolling_area_assigned);
         }
-        // console.log("IRL - Patrolling area assigned is: " + patrolling_area_assigned);
+        
         while (true) {
-            if (game_initialized && patrolling_area_assigned) { // Check if the game has been initialized. 
+            // console.log("EI " + everything_initialized + "PA "+ patrolling_area_assigned);
+       if (everything_initialized && patrolling_area_assigned) { // Check if the game has been initialized. 
                 if (parcel_decading_interval != "infinite") {
                     if (interval_trigger) {
                         console.log("IRL - Long term DB update interval: " + ltpdb_update_interval + " ms.");
@@ -1569,11 +1993,11 @@ class IntentionRevision {
                     let new_intention = await option_choosing_function();
                     await myAgent.push(new_intention); // Produce the next best option. 
                 } else {
-                    // console.log("IRL - Intention queue length: " + this.intention_queue.length);
-                    // console.log("IRL - Intention queue:");
-                    // this.#intention_queue.forEach(intention => {
-                    //     console.log(intention.predicate);
-                    // });
+                    console.log("IRL - Intention queue length: " + this.intention_queue.length);
+                    console.log("IRL - Intention queue:");
+                    this.#intention_queue.forEach(intention => {
+                    console.log(intention.predicate);
+                    });
 
                     //TODO: Check again if enough time 
                     /* if (this.intention_queue[0].predicate[0] === 'patrolling' && parcel_decading_interval == 'infinite') {
@@ -1638,6 +2062,7 @@ class IntentionRevision {
         }
     }
 }
+}
 
 // Intention revision queue class(IRQ). 
 
@@ -1666,7 +2091,8 @@ class IntentionRevisionQueue extends IntentionRevision {
         // Agent is currently patrolling and senses a new parcel
         else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'patrolling' && intention.predicate[0] === 'go_pick_up')) {
 
-            // console.log("IRQ - Case 3");
+            console.log("IRQ - Case 3");
+console.log(intention.predicate);
             this.intention_queue[0].stop();
             this.intention_queue.shift();
             this.intention_queue.push(intention);
@@ -1690,16 +2116,26 @@ class IntentionRevisionQueue extends IntentionRevision {
                 }
             }
 
+             if (reduced_patrolling == true) {
+                this.intention_queue.length = 0;
+                option_choosing_function();
+                 return;
+             }
+            
+            
+
             // Because Intention Queue is Size 1 the new intention is pushed either way - only the order has to be determined  
             if (this.intention_queue.length == 1) {
 
                 let priority = ordering_IntentionQueue(intention, this.intention_queue[0]);
 
+                let distance_a_s = calculate_distance (me.x, me.y, this.intention_queue[0].predicate[1], this.intention_queue[0].predicate[2])
+
                 if (priority == "exception") {
                     console.log("ERROR CAUGHT! IQ Size 1")
                     intention_revision_reset();
                 }
-                else if (priority == intention.predicate[3]) {
+                else if (priority == intention.predicate[3] && distance_a_s > 5) {
                     // console.log("IRQ - Case 4.3.1 -> IQ Size 1 - Reordering is needed");
                     this.intention_queue[0].stop();
                     this.intention_queue.unshift(intention);
@@ -1711,13 +2147,18 @@ class IntentionRevisionQueue extends IntentionRevision {
             // Since Intention Queue has Size 2 it has to be checked if new parcel is pushed and in which place it will be pushed
             else if (this.intention_queue.length == 2) {
 
+                console.log("X!!!! - " + this.intention_queue[0].predicate[1]);
+                console.log("Y!!!! - " + this.intention_queue[0].predicate[2]);
+
+                let distance_a_s = calculate_distance (me.x, me.y, this.intention_queue[0].predicate[1], this.intention_queue[0].predicate[2])
+
                 let priority_1 = ordering_IntentionQueue(intention, this.intention_queue[0]);
 
                 if (priority_1 == "exception") {
                     console.log("ERROR CAUGHT! IQ Size 2 - Prio 1")
                     intention_revision_reset();
                 }
-                else if (priority_1 == intention.predicate[3]) {
+                else if (priority_1 == intention.predicate[3] && distance_a_s > 5) {
                     // console.log("IRQ - Case 4.4.1 -> IQ Size 2 - New Intention is BEST Intention");
                     this.intention_queue[0].stop();
                     this.intention_queue.unshift(intention);
@@ -1735,7 +2176,7 @@ class IntentionRevisionQueue extends IntentionRevision {
                         this.intention_queue.pop();
                         this.intention_queue.push(intention);
                     } else {
-                        console.log("WARNING: IRQ - Case 4.5.2 -> IQ Size 2 - New Intention is WORST! New Intention gets deleted");
+                        console.log("WARNING: IRQ - Case 4.5.2 -> IQ Size 2 - New Intention is worse than intention on second position! New Intention gets deleted");
                     }
                 }
             } else {
