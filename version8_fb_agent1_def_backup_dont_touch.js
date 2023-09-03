@@ -105,7 +105,6 @@ var last_quadrant = 0;
 // Function to produce tha patrolling pivots that will be distributed between agents (CFQ). 
 async function choose_my_fav_quadrants() {
 
-
     // I select the quadrant where I am and the one near (1 and 4, 2 and 3, look at the report for the map) as e my favourite. 
     let my_fav_quadrants = [];
     if (me.x <= first_quadrant[0] && me.y <= first_quadrant[1]) {
@@ -863,11 +862,30 @@ function best_option_memorized_parcel() {
 function option_choosing_function() {
 
 
+
+
+
     /// Variables declaration.
 
     var best_option; //The best option that will be returned as result at the end of the function. 
     let valid_parcels = new Map; //The map containing the eventually found valid parcels with the respective reward gains. 
     let parcels_total_distances = new Map;
+
+    if (patrolling_area_assigned) {
+        if (my_quadrants[0] === "first" || my_quadrants[0] === "fourth") {
+            if (me.y > first_quadrant[1]) {
+                console.log("OCF - The agent is outside its competence area. Forcing him to go back inside.")
+                best_option = patrolling_case_selection();
+                return best_option;
+            }
+        } else if (my_quadrants[0] === "second" || my_quadrants[0] === "third") {
+            if (me.x < third_quadrant[1]) {
+                console.log("OCF - The agent is outside its competence area. Forcing him to go back inside.")
+                best_option = patrolling_case_selection();
+                return best_option;
+            }
+        }
+    }
 
     /// 0.1 Finding the nearest delivery tile respect to the current position of the agent. 
 
@@ -888,7 +906,6 @@ function option_choosing_function() {
             }
         }
     });
-
 
 
     /// 0.2 Calculate the reward/distance ratio for each parcel, finding out the one with the highest. 
@@ -1377,15 +1394,15 @@ client.onParcelsSensing(async perceived_parcels => {
     var best_option;
     if (me.parcel_count < parcel_db.size) {
         best_option = await option_choosing_function(); // Call the function to produce the best option. 
-    //     console.log("LINE 1394");
-    //     console.log("intention quee 0");
-    //    myAgent.intention_queue.forEach(intention => {
-    //         console.log(intention.predicate);
-    //     });
+        //     console.log("LINE 1394");
+        //     console.log("intention quee 0");
+        //    myAgent.intention_queue.forEach(intention => {
+        //         console.log(intention.predicate);
+        //     });
 
         await myAgent.push(best_option); // Push the best option into the intention queue. 
         // console.log("PDM - Intention queue after pushing in parcel DB:");
-      
+
     }
 });
 
@@ -1529,11 +1546,11 @@ class IntentionRevision {
     // The main decisional loop. 
     async loop() {
 
-            // Wait until I have available information about myself.
-    while (!me.x || !me.y) {
-        await new Promise(r => setTimeout(r, 1000));
-        console.log("CFQ - Waiting for myself to know where I am.")
-    }
+        // Wait until I have available information about myself.
+        while (!me.x || !me.y) {
+            await new Promise(r => setTimeout(r, 1000));
+            console.log("CFQ - Waiting for myself to know where I am.")
+        }
 
         if (!patrolling_area_assigned) {
             await deal_patrolling_area();
@@ -1593,7 +1610,7 @@ class IntentionRevision {
                     // Pick as intention to execute the first in the queue. 
                     const intention = this.intention_queue[0];
 
-                     console.log("IRL - Intention that is going to be achieved:")
+                    console.log("IRL - Intention that is going to be achieved:")
                     console.log(intention.predicate);
 
                     // Achieve the intention. 
@@ -1666,12 +1683,12 @@ class IntentionRevisionQueue extends IntentionRevision {
             // console.log(this.intention_queue[0].predicate);
 
 
-             if (this.intention_queue[0].predicate[0]) {
+            if (this.intention_queue[0].predicate[0]) {
                 if (this.intention_queue.find((i) => i.predicate.join(' ') == predicate.join(' '))) {
                     // console.log("IRQ - Case 4.2 -> Intention is already queued");
                     return; // Intention is already queued.
                 }
-             }
+            }
 
             // Because Intention Queue is Size 1 the new intention is pushed either way - only the order has to be determined  
             if (this.intention_queue.length == 1) {

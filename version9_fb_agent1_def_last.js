@@ -143,10 +143,13 @@ async function update_parcel_assignment() {
 
     let myself_parcels_estimations = produce_estimations();
 
+    parcels_agents_assignments = new Map;
 
-    for (const [pid, estimation] of myself_parcels_estimations) {
-        console.log("UPA - Estimation for parcel " + pid + ": " + estimation);
-    }
+
+    console.log("UPA - Estimations length: " + myself_parcels_estimations.size);
+    // for (const [pid, estimation] of myself_parcels_estimations) {
+    //     console.log("UPA - Estimation for parcel " + pid + ": " + estimation);
+    // }
 
     let message = { type: "parcels_assignment_request" };
     let reply;
@@ -157,7 +160,7 @@ async function update_parcel_assignment() {
     }
     // Set promise race while asking to have a timout on communication. 
     try {
-        reply = await Promise.race([wait(2000), client.ask(other_agent_id, message)]);
+        reply = await Promise.race([wait(500), client.ask(other_agent_id, message)]);
     } catch (err) {
         console.log("UPA - Error in communicating with other agent.");
         console.log("UPA - Parcel assignments:");
@@ -180,6 +183,7 @@ async function update_parcel_assignment() {
                     }
                 }
             } else {
+
                 parcels_agents_assignments = new Map;
                 parcels_agents_assignments.set(pid, true);
             }
@@ -299,7 +303,7 @@ async function notifyParcelGone(pid) {
         type: "parcel_gone_notification",
         pid: pid
     });
-    console.log("PGMS - Parcel gone notification sent.")
+    // console.log("PGMS - Parcel gone notification sent.")
 }
 
 // Message receiving event management (REM).
@@ -346,6 +350,16 @@ client.onMsg(async (id, name, message, reply) => {
             // console.log("REM - Received notification of parcel gone from other agent.");
             await long_term_parcel_db.delete(message.pid);
             // console.log("REM - Parcel removed from long term parcel DB.");
+        }
+
+        // Send my estimation (for myself) replying to other agent's request. 
+        if (message.type === "parcels_assignment_request") {
+
+            let myself_parcels_estimations = produce_estimations();
+            console.log("REM - Replying with my estimations...")
+            let answer = { estimations: myself_parcels_estimations };
+            if (reply)
+                try { reply(answer) } catch { (error) => console.error(error) }
         }
 
         // Update my assignment with fresh updated estimations from other agent. 
@@ -864,9 +878,11 @@ function go_to_memorized_parcel() {
     let best_parcel;
     let suitable_parcels_counter = 0;
     // Count how many suitable parcels there are. 
-    for (const [pid, suitable] of parcels_agents_assignments) {
-        if (suitable == true) {
-            suitable_parcels_counter++;
+    if (parcels_agents_assignments.size > 0) {
+        for (const [pid, suitable] of parcels_agents_assignments) {
+            if (suitable == true) {
+                suitable_parcels_counter++;
+            }
         }
     }
 
@@ -993,11 +1009,30 @@ function best_option_memorized_parcel() {
 function option_choosing_function() {
 
 
+
+
+
     /// Variables declaration.
 
     var best_option; //The best option that will be returned as result at the end of the function. 
     let valid_parcels = new Map; //The map containing the eventually found valid parcels with the respective reward gains. 
     let parcels_total_distances = new Map;
+
+    if (patrolling_area_assigned) {
+        if (my_quadrants[0] === "first" || my_quadrants[0] === "fourth") {
+            if (me.y > first_quadrant[1]) {
+                console.log("OCF - The agent is outside its competence area. Forcing him to go back inside.")
+                best_option = patrolling_case_selection();
+                return best_option;
+            }
+        } else if (my_quadrants[0] === "second" || my_quadrants[0] === "third") {
+            if (me.x < third_quadrant[1]) {
+                console.log("OCF - The agent is outside its competence area. Forcing him to go back inside.")
+                best_option = patrolling_case_selection();
+                return best_option;
+            }
+        }
+    }
 
     /// 0.1 Finding the nearest delivery tile respect to the current position of the agent. 
 
@@ -1429,7 +1464,7 @@ function option_choosing_function() {
                         /////////////////FIX
                         if (direct_min_del_tile_distance <= (parcels_total_distances.get(best_parcel.id) / 2)) {
                             best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
-                            console.log("OCF - Going to delivery because the delivery tile is really close.");
+                            // console.log("OCF - Going to delivery because the delivery tile is really close.");
                         } else {
 
                             // console.log("OCF - Picking up one of the perceived parcels will probably grant a gain in terms of score. The parcel is:");
@@ -2096,6 +2131,7 @@ planLibrary.push(GoPickUp)
 planLibrary.push(OptimalPathMove)
 planLibrary.push(GoPutDown)
 planLibrary.push(Patrolling)
+
 
 
 

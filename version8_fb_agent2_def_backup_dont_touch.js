@@ -863,11 +863,30 @@ function best_option_memorized_parcel() {
 function option_choosing_function() {
 
 
+
+
+
     /// Variables declaration.
 
     var best_option; //The best option that will be returned as result at the end of the function. 
     let valid_parcels = new Map; //The map containing the eventually found valid parcels with the respective reward gains. 
     let parcels_total_distances = new Map;
+
+    if (patrolling_area_assigned) {
+        if (my_quadrants[0] === "first" || my_quadrants[0] === "fourth") {
+            if (me.y > first_quadrant[1]) {
+                console.log("OCF - The agent is outside its competence area. Forcing him to go back inside.")
+                best_option = patrolling_case_selection();
+                return best_option;
+            }
+        } else if (my_quadrants[0] === "second" || my_quadrants[0] === "third") {
+            if (me.x < third_quadrant[1]) {
+                console.log("OCF - The agent is outside its competence area. Forcing him to go back inside.")
+                best_option = patrolling_case_selection();
+                return best_option;
+            }
+        }
+    }
 
     /// 0.1 Finding the nearest delivery tile respect to the current position of the agent. 
 
@@ -1961,5 +1980,9 @@ planLibrary.push(GoPickUp)
 planLibrary.push(OptimalPathMove)
 planLibrary.push(GoPutDown)
 planLibrary.push(Patrolling)
+
+
+
+
 
 
