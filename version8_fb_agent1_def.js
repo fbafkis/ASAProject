@@ -124,6 +124,11 @@ var new_map_borders = false;
 
 var reduced_patrolling = false;
 
+var cleaned_map_width_min = null;
+var cleaned_map_width_max = null;
+
+var spawning_tiles = [];
+
 /// Functions.
 
 ///////////////////// Multi agent related. 
@@ -132,6 +137,11 @@ var reduced_patrolling = false;
 async function choose_my_fav_quadrants() {
 
     console.log("test5555");
+    console.log("Me - x: " + me.x + " " + me.y);
+    console.log(first_quadrant[0]);
+    console.log(first_quadrant[1]);
+    console.log(second_quadrant[0]);
+    console.log(second_quadrant[1]);
 
     // I select the quadrant where I am and the one near (1 and 4, 2 and 3, look at the report for the map) as e my favourite. 
     let my_fav_quadrants = [];
@@ -540,8 +550,8 @@ async function select_patrolling_points() {
 //console.log("final Map!");
 //console.log(non_valid_tiles_cleaned_x);
 
-var cleaned_map_width_min = null;
-var cleaned_map_width_max = null;
+cleaned_map_width_min = null;
+cleaned_map_width_max = null;
 //console.log(me);
 
 
@@ -551,6 +561,7 @@ for(let i = 0; i < non_valid_tiles_cleaned_x.length; i++) {
     console.log("Max: " + cleaned_map_width_max);
     console.log("Min: " + cleaned_map_width_min);
 */
+
     if (cleaned_map_width_max == null && me.x < non_valid_tiles_cleaned_x[i]) {
         cleaned_map_width_max = non_valid_tiles_cleaned_x[i];
         console.log("test1");
@@ -564,12 +575,13 @@ for(let i = 0; i < non_valid_tiles_cleaned_x.length; i++) {
         cleaned_map_width_min = non_valid_tiles_cleaned_x[i];
         console.log("test4");
     }
+
 }
 
-/*console.log("New cleaned map boundaries: ");
+console.log("New cleaned map boundaries: ");
 console.log(cleaned_map_width_min);
 console.log(cleaned_map_width_max);
-*/
+
 if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
     new_map_borders = true;
     if (cleaned_map_width_max == null) {
@@ -604,7 +616,7 @@ if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
         for (const tile of map.tiles.values()) {
             if (tile.x > cleaned_map_width_min && tile.x < cleaned_map_width_max) {
                 cleaned_map.add(tile)
-            }
+                   }
         }
     } 
     
@@ -620,11 +632,10 @@ if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
         
     }
 }
-
+console.log(cleaned_map);
     if ((cleaned_map.width == 1 && new_map_borders == true) || (cleaned_map.width == 2 && new_map_borders == true) || (cleaned_map.width == 3 && new_map_borders == true)) {
-    
-    var first_quadrant = [];
-    var second_quadrant = [];
+     first_quadrant = [];
+     second_quadrant = [];
 
 reduced_patrolling = true;
 
@@ -653,13 +664,12 @@ for (const tile of cleaned_map.tiles.values()) {
         second_quadrant_tiles.push(tile);
     }
     }
-
 } else {
 
-    var first_quadrant = [];
-    var second_quadrant = [];
-    var third_quadrant = [];
-    var fourth_quadrant = [];
+     first_quadrant = [];
+     second_quadrant = [];
+     third_quadrant = [];
+     fourth_quadrant = [];
     
 
     if (map.width % 2 == 0) {
@@ -728,7 +738,14 @@ quadrants_retrieved = true;
             fourth_quadrant_tiles.push(tile);
         }
     }
+
+    console.log("FQ: x: " + first_quadrant[0] + " " + first_quadrant[1]);
+    console.log("sQ: x: " + second_quadrant[0] + " " + second_quadrant[1]);
+    console.log("tQ: x: " +third_quadrant[0] + " " + third_quadrant[1]);
    }
+   console.log(first_quadrant_tiles);
+   console.log(second_quadrant_tiles);
+
 }
 
 // Function for comparing to intentions and returning the better option (IQO).
@@ -824,6 +841,7 @@ async function patrolling_case_selection() {
     let random_index = null;
     let selected_tile = null;
     let patrolling_point_distance = null;
+    spawning_tiles = [];
 
 ///////////////////////////////
     
@@ -888,6 +906,10 @@ if (reduced_patrolling == false) {
         }
     }
 } else {
+
+    let spawner = false;
+
+    while(true) {
     if (patrolling_area_counter > 2 || patrolling_area_counter < 1) {
         patrolling_area_counter = 1;
     }
@@ -903,14 +925,44 @@ if (reduced_patrolling == false) {
         default:
           console.log("PCS - Warning -> impossible case!");
       }
-}
-
     
+    for (const tile of active_sector) {
+        if (tile.parcelSpawner == true) {
+            spawner = true;
+            spawning_tiles.push(tile);
+        }
+    }
+    
+    console.log("Spawner: " + spawner);
+    if (spawner == true) {
+        break;
+    } else {
+        patrolling_area_counter++;
+    }
+    
+    }
 
     if (patrolling_init == false) {
         random_index = Math.floor(Math.random() * active_sector.length);
         selected_tile = active_sector[random_index];
-        // console.log("PCS - Initial Tile selected - x: " + selected_tile.x + " + y: " + selected_tile.y + " !");
+        idle_option = ['patrolling', selected_tile.x, selected_tile.y];
+        last_patrolling_point = selected_tile;
+        patrolling_init = true;
+    } else {
+            random_index = Math.floor(Math.random() * active_sector.length);
+            selected_tile = active_sector[random_index];
+                idle_option = ['patrolling', selected_tile.x, selected_tile.y];
+                last_patrolling_point = selected_tile;
+        }
+    }
+
+
+
+    
+if (reduced_patrolling == false) {
+    if (patrolling_init == false) {
+        random_index = Math.floor(Math.random() * active_sector.length);
+        selected_tile = active_sector[random_index];
         idle_option = ['patrolling', selected_tile.x, selected_tile.y];
         last_patrolling_point = selected_tile;
         patrolling_init = true;
@@ -929,6 +981,8 @@ if (reduced_patrolling == false) {
             }
         }
     }
+}
+
     patrolling_area_counter++;
     console.log("PCS - Patrolling intention that is pushed is: ");
     console.log(idle_option);
@@ -1084,6 +1138,7 @@ function option_choosing_function() {
     let best_ratio = null;
 
 
+    
     // Check that into the perceived parcels there are not only those I am carrying, otherwise it is useless to search for best ratio parcel.
     if (me.parcel_count < parcel_db.size) {
         for (const [pid, parcel] of parcel_db) {
@@ -1117,19 +1172,33 @@ function option_choosing_function() {
                     ratio = parcel.reward;
                 }
                 if (best_ratio == null) {
+                    if (reduced_patrolling == true) {
+                        if (parcel.x > cleaned_map_width_min && parcel.x < cleaned_map_width_max) {
+                            best_ratio_parcel = parcel;
+                            best_ratio = ratio;
+                        } 
+                    } else {
                     best_ratio_parcel = parcel;
-                    best_ratio = ratio;
+                    best_ratio = ratio; 
+                    } 
                 } else {
                     if (ratio > best_ratio) {
+                        if (parcel.x > cleaned_map_width_min && parcel.x < cleaned_map_width_max) {
+                            best_ratio_parcel = parcel;
+                            best_ratio = ratio;
+                        } 
+                    } else {
                         best_ratio = ratio;
                         best_ratio_parcel = parcel;
                     }
                 }
+                    }
+                }
 
             }
-        }
+        
         // console.log("OCF - Parcel " + best_ratio_parcel.id + " has the best ratio with the value: " + best_ratio);
-    }
+    
 
     // 0.3 Compare with memorized parcels of long term parcel_db
 
@@ -1147,10 +1216,31 @@ function option_choosing_function() {
 
     /// Case management.
 
+   if (reduced_patrolling == true ) {
+        if(me.parcel_count >= 1) {
+            best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
+        } else {
+            let patrolling_flag = true;
+            let distance_spawner = null;
+            for (let i = 0; i < spawning_tiles.length; i++) {
+                distance_spawner = calculate_distance(me.x, me.y, spawning_tiles[i].x, spawning_tiles[i].y);
+                if (distance_spawner < parcel_sensing_distance) {
+                    patrolling_flag = false;
+                }
+            }
+            if (patrolling_flag == true) {
+            best_option = patrolling_case_selection();
+            } else {
+                 best_option = ['go_pick_up', best_ratio_parcel.x, best_ratio_parcel.y, best_ratio_parcel.id];
+            }
+           
+        }
+   }
+   
     /// Case 1.1: Maximum number of carried parcels reached for infinite parcel degredation
 
-    //TODO: Check behaviour on challenge_23 (maybe if cases for infinite and degredation with degredation still using max_parcels)
-    if ((me.parcel_count >= max_allowed_parcels) && (parcel_decading_interval == 'infinite')) {
+   
+    else if ((me.parcel_count >= max_allowed_parcels) && (parcel_decading_interval == 'infinite')) {
         // console.log("OCF - 1.1 - Maximum number of carried parcels reached. Let's go to delivery.")
         best_option = ['go_put_down', agent_nearest_delivery_tile.x, agent_nearest_delivery_tile.y, true];
     }
@@ -1723,6 +1813,21 @@ class IntentionRevision {
         await new Promise(r => setTimeout(r, 1000));
         console.log("CFQ - Waiting for myself to know where I am.")
     }
+    
+    if (game_initialized) { // Check if the game has been initialized. 
+            if (patrolling_points_selected == false) {
+             // Preparing the patrolling strategy. 
+             select_patrolling_points();
+             console.log("z");
+             patrolling_points_selected = true;
+             everything_initialized = true;
+             patrolling_area_assigned = true;
+            }
+
+   /* while (first_quadrant.length == 0 || second_quadrant.length == 0) {
+        await new Promise(r => setTimeout(r, 1000));
+        console.log("CFQ - Waiting for Quadrant definition.")
+    } */
 
     if (!patrolling_area_assigned && reduced_patrolling == false) {
         await deal_patrolling_area();
@@ -1730,14 +1835,8 @@ class IntentionRevision {
     }
     
     while (true) {
-        if (game_initialized) { // Check if the game has been initialized. 
-            if (patrolling_points_selected == false) {
-             // Preparing the patrolling strategy. 
-             select_patrolling_points();
-             patrolling_points_selected = true;
-             everything_initialized = true;
-            }
-        if (everything_initialized && patrolling_area_assigned) { // Check if the game has been initialized.
+       // console.log("EI " + everything_initialized + "PA "+ patrolling_area_assigned);
+       if (everything_initialized && patrolling_area_assigned) { // Check if the game has been initialized.
                 if (parcel_decading_interval != "infinite") {
                     if (interval_trigger) {
                         console.log("IRL - Long term DB update interval: " + ltpdb_update_interval + " ms.");
@@ -1749,11 +1848,11 @@ class IntentionRevision {
                     let new_intention = await option_choosing_function();
                     await myAgent.push(new_intention); // Produce the next best option. 
                 } else {
-                    // console.log("IRL - Intention queue length: " + this.intention_queue.length);
-                    // console.log("IRL - Intention queue:");
-                    // this.#intention_queue.forEach(intention => {
-                    //     console.log(intention.predicate);
-                    // });
+                     console.log("IRL - Intention queue length: " + this.intention_queue.length);
+                     console.log("IRL - Intention queue:");
+                     this.#intention_queue.forEach(intention => {
+                         console.log(intention.predicate);
+                     });
 
                     //TODO: Check again if enough time 
                     /* if (this.intention_queue[0].predicate[0] === 'patrolling' && parcel_decading_interval == 'infinite') {
@@ -1847,7 +1946,8 @@ class IntentionRevisionQueue extends IntentionRevision {
         // Agent is currently patrolling and senses a new parcel
         else if (this.intention_queue.length > 0 && (this.intention_queue[0].predicate[0] === 'patrolling' && intention.predicate[0] === 'go_pick_up')) {
 
-            // console.log("IRQ - Case 3");
+             console.log("IRQ - Case 3");
+             console.log(intention.predicate);
             this.intention_queue[0].stop();
             this.intention_queue.shift();
             this.intention_queue.push(intention);
@@ -1870,6 +1970,14 @@ class IntentionRevisionQueue extends IntentionRevision {
                     return; // Intention is already queued.
                 }
              }
+
+             if (reduced_patrolling == true) {
+                this.intention_queue.length = 0;
+                option_choosing_function();
+                 return;
+             }
+            
+            
 
             // Because Intention Queue is Size 1 the new intention is pushed either way - only the order has to be determined  
             if (this.intention_queue.length == 1) {
