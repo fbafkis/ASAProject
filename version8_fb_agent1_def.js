@@ -2,10 +2,10 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 /// The client instance.
 const client = new DeliverooApi(
     'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImQzNDg0YTQ5ZWU2IiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNzUwNTYyfQ.AltsF_Ycd3pLhxNMIIAddALeMARBLiCR-Qg2zxaOyPI')
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjM3ODQ4Mjg2NDY4IiwibmFtZSI6ImRvZmIxIiwiaWF0IjoxNjkzNzU2Njc2fQ.9xXvKCkaxcA7-xogCcnzrKgaP_sZtidma63xASO6ZD0')
 
 /// The other agent id. 
-var other_agent_id = "484a49ee6e6";
+var other_agent_id = "86468ae83b3";
 
 /// Variables and constants.
 
@@ -24,6 +24,21 @@ const map = {
         return this.tiles.get(x + 1000 * y)
     }
 };
+
+// map after redifining borders
+const cleaned_map = {
+    width: undefined,
+    height: undefined,
+    tiles: new Map(),
+    add: function (tile) {
+        const { x, y } = tile;
+        return this.tiles.set(x + 1000 * y, tile);
+    },
+    xy: function (x, y) {
+        return this.tiles.get(x + 1000 * y)
+    }
+}
+
 // The field that keeps trace of the parcels currently carried by myself.
 me.parcel_count;
 // The decading interval of the parcels. 
@@ -42,6 +57,8 @@ var delivery_tiles_database = [];
 var patrolling_area_counter = 1;
 // A flag to ensure that data from the game has correctly retrieved. 
 var game_initialized = false;
+// game and patrolling points are initalized
+var everything_initialized = false;
 // Counter to keep trace of the sequential number of patrolling moves pushed.
 var patrolling_moves_counter = 0;
 // Limit of patrolling moves to execute while I am carrying some parcels before to force the delivery. 
@@ -97,6 +114,14 @@ var patrolling_area_assigned = false;
 var quadrants_retrieved = false;
 // 0 or 1 flag to cycle over the 2 quadrants. 
 var last_quadrant = 0;
+// X-Coordinates of cleaned valid tiles
+var non_valid_tiles_cleaned_x = [];
+// if patrolling points are selected
+var patrolling_points_selected = false;
+// if we have a map with ne borders
+var new_map_borders = false;
+
+var reduced_patrolling = false;
 
 /// Functions.
 
@@ -105,6 +130,7 @@ var last_quadrant = 0;
 // Function to produce tha patrolling pivots that will be distributed between agents (CFQ). 
 async function choose_my_fav_quadrants() {
 
+    console.log("test5555");
 
     // I select the quadrant where I am and the one near (1 and 4, 2 and 3, look at the report for the map) as e my favourite. 
     let my_fav_quadrants = [];
@@ -427,8 +453,6 @@ client.onMap((width, height, tiles) => {
             delivery_tiles_database.push(t);
         }
     }
-    // Preparing the patrolling strategy. 
-    select_patrolling_points();
     map_initialized = true;
 });
 
@@ -453,7 +477,189 @@ const patrolling_y_coordinates = new Map()
 
 // Function that selects the pivot points on the map to perform patrolling. 
 
-function select_patrolling_points() {
+async function select_patrolling_points() {
+    
+    /**
+ * @type {Map<string,[{x, y}]}
+ */
+    const non_valid_tiles = new Map();
+
+    for (let i=0; i<map.width; i++){
+        for (let j = 0; j < map.height; j++) {
+            let considered_tile = map.xy(i, j);
+            if ((considered_tile == undefined)) {
+                let coordinates_ct = {x: i, y: j};
+                non_valid_tiles.set(i + 1000 * j, coordinates_ct)
+            } else { 
+                continue;  
+            }
+        }
+    }
+
+  //  console.log(non_valid_tiles);
+ 
+    for (let z = 0; z < map.width; z++) {
+//        console.log("Width = " + map.width + " z = " + z);
+    let counter = 0;
+    let coordinates = non_valid_tiles.entries().next().value;
+    let x_coordinate = coordinates[1].x;
+  //console.log("X-Coordinate is:" + x_coordinate);
+  
+    //console.log("Counter: " + counter);
+    for (const entry of non_valid_tiles) {
+        if (entry[1].x == x_coordinate) {
+          //  console.log("Entry coordinates: " + entry[1].x + " " + entry[1].y);
+            counter++;
+         //   console.log("Counter: " + counter);
+        }
+    }
+
+  //  console.log("Comparision! Counter: " + counter + " Map height " + map.height);
+    if (counter < map.height) {
+//        console.log("Entry coordinates to be deleted " + x_coordinate + " - Counter: " + counter);
+        for (let j = 0; j < map.height; j++) {
+        non_valid_tiles.delete(x_coordinate + 1000 * j);
+    }
+}
+ //   console.log("Comparision! Counter: " + counter + " Map height " + map.height);
+    if (counter == map.height) {
+   //     console.log("Entry coordinates to be deleted " + x_coordinate + " - Counter: " + counter); 
+        non_valid_tiles_cleaned_x.push(x_coordinate);
+        for (let j = 0; j < map.height; j++) {
+        non_valid_tiles.delete(x_coordinate + 1000 * j);
+    }
+}
+
+    if (x_coordinate == (map.width - 1)) {
+     //   console.log("All elements done!");
+        break;
+    }
+    }
+
+//console.log("final Map!");
+//console.log(non_valid_tiles_cleaned_x);
+
+var cleaned_map_width_min = null;
+var cleaned_map_width_max = null;
+//console.log(me);
+
+
+for(let i = 0; i < non_valid_tiles_cleaned_x.length; i++) {
+ /*   console.log("Element: " + non_valid_tiles_cleaned_x[i]);
+    console.log("Me X: " + me.x);
+    console.log("Max: " + cleaned_map_width_max);
+    console.log("Min: " + cleaned_map_width_min);
+*/
+    if (cleaned_map_width_max == null && me.x < non_valid_tiles_cleaned_x[i]) {
+        cleaned_map_width_max = non_valid_tiles_cleaned_x[i];
+        console.log("test1");
+    } else if (cleaned_map_width_min == null && me.x > non_valid_tiles_cleaned_x[i]) {
+        cleaned_map_width_min = non_valid_tiles_cleaned_x[i];
+        console.log("test2");
+    } else  if (cleaned_map_width_max != null && me.x < non_valid_tiles_cleaned_x[i] && cleaned_map_width_max > non_valid_tiles_cleaned_x[i]) {
+        cleaned_map_width_max = non_valid_tiles_cleaned_x[i];
+        console.log("test3");
+    } else if (cleaned_map_width_min != null && me.x > non_valid_tiles_cleaned_x[i] && cleaned_map_width_min < non_valid_tiles_cleaned_x[i]) {
+        cleaned_map_width_min = non_valid_tiles_cleaned_x[i];
+        console.log("test4");
+    }
+}
+
+/*console.log("New cleaned map boundaries: ");
+console.log(cleaned_map_width_min);
+console.log(cleaned_map_width_max);
+*/
+if (cleaned_map_width_max != null || cleaned_map_width_min != null) {
+    new_map_borders = true;
+    if (cleaned_map_width_max == null) {
+    cleaned_map.width = (map.width - cleaned_map_width_min - 1);
+   // console.log("New Width: " + cleaned_map.width);
+    cleaned_map.height = map.height;
+
+        // Add  tiles to cleaned_map.
+        for (const tile of map.tiles.values()) {
+            if (tile.x > cleaned_map_width_min) {
+                cleaned_map.add(tile)
+            }
+        }
+    } else if (cleaned_map_width_min == null) {
+        cleaned_map.width = (cleaned_map_width_max - 1);
+      //  console.log("New Width: " + cleaned_map.width);
+        cleaned_map.height = map.height;
+    
+            // Add  tiles to cleaned_map.
+            for (const tile of map.tiles.values()) {
+                if (tile.x < cleaned_map_width_max) {
+                    cleaned_map.add(tile)
+                }
+            }
+    } else {
+    cleaned_map.width = (cleaned_map_width_max - cleaned_map_width_min - 1);
+ 
+  //  console.log("New Width: " + cleaned_map.width);
+    cleaned_map.height = map.height;
+
+        // Add  tiles to cleaned_map.
+        for (const tile of map.tiles.values()) {
+            if (tile.x > cleaned_map_width_min && tile.x < cleaned_map_width_max) {
+                cleaned_map.add(tile)
+            }
+        }
+    } 
+    
+    if (cleaned_map.width == 1) {
+        var one_lane_x = null;
+        if (cleaned_map_width_max == null ) {
+            one_lane_x = cleaned_map_width_min + 1;
+        } else if (cleaned_map_width_min == null) {
+            one_lane_x = cleaned_map_width_max - 1;
+        }else {
+             one_lane_x = cleaned_map_width_max - 1;
+        }
+        
+    }
+}
+
+    if ((cleaned_map.width == 1 && new_map_borders == true) || (cleaned_map.width == 2 && new_map_borders == true) || (cleaned_map.width == 3 && new_map_borders == true)) {
+    
+    var first_quadrant = [];
+    var second_quadrant = [];
+
+reduced_patrolling = true;
+
+first_quadrant.push(one_lane_x);
+if (cleaned_map.height % 2 == 0) {
+first_quadrant.push(cleaned_map.height / 2 - 1);
+} else {
+first_quadrant.push((cleaned_map.height + 1) / 2 - 1);
+}
+second_quadrant.push(one_lane_x);
+if (cleaned_map.height % 2 == 0) {
+second_quadrant.push(cleaned_map.height / 2);
+} else {
+second_quadrant.push((cleaned_map.height + 1) / 2);
+} 
+
+for (const tile of cleaned_map.tiles.values()) {
+    if (tile.delivery == true) {
+        continue;
+    }
+
+    if (tile.y <= first_quadrant[1]) {
+        first_quadrant_tiles.push(tile);
+    } 
+    else if (tile.y >= second_quadrant[1]) {
+        second_quadrant_tiles.push(tile);
+    }
+    }
+
+} else {
+
+    var first_quadrant = [];
+    var second_quadrant = [];
+    var third_quadrant = [];
+    var fourth_quadrant = [];
+    
 
     if (map.width % 2 == 0) {
 
@@ -463,46 +669,46 @@ function select_patrolling_points() {
             first_quadrant.push(map.height / 2 - 1);
             second_quadrant.push(map.width / 2 - 1);
             second_quadrant.push(map.height / 2);
-            third_quadrant.push(map.width / 2);
+            third_quadrant.push(map.width / 2 );
             third_quadrant.push(map.height / 2);
             fourth_quadrant.push(map.width / 2);
             fourth_quadrant.push(map.height / 2 - 1);
         }
         // width even, height odd
-        first_quadrant.push(map.width / 2 - 1);
-        first_quadrant.push((map.height + 1) / 2 - 1);
-        second_quadrant.push(map.width / 2 - 1);
-        second_quadrant.push((map.height + 1) / 2);
-        third_quadrant.push(map.width / 2);
-        third_quadrant.push((map.height + 1) / 2);
-        fourth_quadrant.push(map.width / 2);
-        fourth_quadrant.push((map.height + 1) / 2 - 1);
+            first_quadrant.push(map.width / 2 - 1);
+            first_quadrant.push((map.height + 1) / 2 - 1);
+            second_quadrant.push(map.width / 2 - 1);
+            second_quadrant.push((map.height + 1) / 2);
+            third_quadrant.push(map.width / 2 );
+            third_quadrant.push((map.height + 1) / 2);
+            fourth_quadrant.push(map.width / 2);
+            fourth_quadrant.push((map.height + 1) / 2 - 1);
 
     } else {
-
+        
         if (map.height % 2 == 0) {
-            // width odd, height even
-            first_quadrant.push((map.width + 1) / 2 - 1);
-            first_quadrant.push(map.height / 2 - 1);
-            second_quadrant.push((map.width + 1) / 2 - 1);
-            second_quadrant.push(map.height / 2);
-            third_quadrant.push((map.width + 1) / 2);
-            third_quadrant.push(map.height / 2);
-            fourth_quadrant.push((map.width + 1) / 2);
-            fourth_quadrant.push(map.height / 2 - 1);
+        // width odd, height even
+        first_quadrant.push((map.width + 1) / 2 - 1);
+        first_quadrant.push(map.height / 2 - 1);
+        second_quadrant.push((map.width + 1) / 2 - 1);
+        second_quadrant.push(map.height / 2);
+        third_quadrant.push((map.width + 1) / 2 );
+        third_quadrant.push(map.height / 2);
+        fourth_quadrant.push((map.width + 1) / 2);
+        fourth_quadrant.push(map.height / 2 - 1);
         }
         // width odd, height odd
         first_quadrant.push((map.width + 1) / 2 - 1);
         first_quadrant.push((map.height + 1) / 2 - 1);
         second_quadrant.push((map.width + 1) / 2 - 1);
         second_quadrant.push((map.height + 1) / 2);
-        third_quadrant.push((map.width + 1) / 2);
+        third_quadrant.push((map.width + 1) / 2 );
         third_quadrant.push((map.height + 1) / 2);
         fourth_quadrant.push((map.width + 1) / 2);
         fourth_quadrant.push((map.height + 1) / 2 - 1);
     }
 
-    quadrants_retrieved = true;
+quadrants_retrieved = true;
 
     for (const tile of map.tiles.values()) {
         if (tile.delivery == true) {
@@ -510,7 +716,7 @@ function select_patrolling_points() {
         }
         if (tile.x <= first_quadrant[0] && tile.y <= first_quadrant[1]) {
             first_quadrant_tiles.push(tile);
-        }
+        } 
         else if (tile.x <= second_quadrant[0] && tile.y >= second_quadrant[1]) {
             second_quadrant_tiles.push(tile);
         }
@@ -521,30 +727,7 @@ function select_patrolling_points() {
             fourth_quadrant_tiles.push(tile);
         }
     }
-
-    /*   let target_x;
-       let target_y;
-       let valid_tile;
-   
-       target_y = Math.floor(map.height / 3) + 1;
-       target_x = Math.floor(map.width / 3) + 1;
-   
-       //TODO: If patrolling is specified - check if tile is undefined
-   
-       patrolling_x_coordinates.set("1", target_x);
-       patrolling_y_coordinates.set("1", target_y);
-   
-   
-       patrolling_x_coordinates.set("2", (target_x));
-       patrolling_y_coordinates.set("2", (target_y * 2));
-   
-       patrolling_x_coordinates.set("3", (target_x * 2));
-       patrolling_y_coordinates.set("3", (target_y * 2));
-   
-       patrolling_x_coordinates.set("4", (target_x * 2));
-       patrolling_y_coordinates.set("4", (target_y));
-   
-       return; */
+   }
 }
 
 // Function for comparing to intentions and returning the better option (IQO).
@@ -641,8 +824,8 @@ async function patrolling_case_selection() {
     let selected_tile = null;
     let patrolling_point_distance = null;
 
-    ///////////////////////////////
-
+    
+if (reduced_patrolling == false) {
     while (!patrolling_area_assigned) {
         console.log("PCS - Waiting for patrolling area assignment to complete.");
         await new Promise(r => setTimeout(r, 500));
@@ -702,10 +885,25 @@ async function patrolling_case_selection() {
             }
         }
     }
+} else {
+    if (patrolling_area_counter > 2 || patrolling_area_counter < 1) {
+        patrolling_area_counter = 1;
+    }
 
-    /////////////////////////////////////////////////////////
 
-    // console.log("PCS - Active sector lenght: " + active_sector.length);
+    switch (patrolling_area_counter) {
+        case 1:
+          active_sector = first_quadrant_tiles;
+          break;
+        case 2:
+          active_sector = second_quadrant_tiles;
+          break;
+        default:
+          console.log("PCS - Warning -> impossible case!");
+      }
+}
+
+    
 
     if (patrolling_init == false) {
         random_index = Math.floor(Math.random() * active_sector.length);
@@ -734,23 +932,8 @@ async function patrolling_case_selection() {
     console.log(idle_option);
 
     return idle_option;
-
-    /*if (patrolling_area_counter == 1) {
-        idle = ['patrolling', patrolling_x_coordinates.get("1"), patrolling_y_coordinates.get("1")];
-        patrolling_area_counter++;
-    } else if (patrolling_area_counter == 2) {
-        idle = ['patrolling', patrolling_x_coordinates.get("2"), patrolling_y_coordinates.get("2")];
-        patrolling_area_counter++;
-    } else if (patrolling_area_counter == 3) {
-        idle = ['patrolling', patrolling_x_coordinates.get("3"), patrolling_y_coordinates.get("3")];
-        patrolling_area_counter++;
-    } else if (patrolling_area_counter == 4) {
-        idle = ['patrolling', patrolling_x_coordinates.get("4"), patrolling_y_coordinates.get("4")];
-        patrolling_area_counter++;
-    }
-    */
-
 }
+
 
 // Function to set the agent going to the (eventually present)best parcel into the long term parcel DB (GTMP). 
 
@@ -1440,6 +1623,7 @@ function clean_ltpdb() {
     }
 }
 
+
 // Agent sensing management (not used in this version).
 
 /*
@@ -1535,12 +1719,20 @@ class IntentionRevision {
         console.log("CFQ - Waiting for myself to know where I am.")
     }
 
-        if (!patrolling_area_assigned) {
-            await deal_patrolling_area();
-        }
-        // console.log("IRL - Patrolling area assigned is: " + patrolling_area_assigned);
-        while (true) {
-            if (game_initialized && patrolling_area_assigned) { // Check if the game has been initialized. 
+    if (!patrolling_area_assigned && reduced_patrolling == false) {
+        await deal_patrolling_area();
+        console.log("IRL - Patrolling area assigned is: " + patrolling_area_assigned);
+    }
+    
+    while (true) {
+        if (game_initialized) { // Check if the game has been initialized. 
+            if (patrolling_points_selected == false) {
+             // Preparing the patrolling strategy. 
+             select_patrolling_points();
+             patrolling_points_selected = true;
+             everything_initialized = true;
+            }
+        if (everything_initialized && patrolling_area_assigned) { // Check if the game has been initialized.
                 if (parcel_decading_interval != "infinite") {
                     if (interval_trigger) {
                         console.log("IRL - Long term DB update interval: " + ltpdb_update_interval + " ms.");
@@ -1620,6 +1812,7 @@ class IntentionRevision {
             await new Promise(res => setImmediate(res));
         }
     }
+}
 }
 
 // Intention revision queue class(IRQ). 
